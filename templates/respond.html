@@ -121,10 +121,17 @@
               {% endif %}
 
               <div style="margin-left:auto; display:flex; gap:0.5rem;" id="incident-actions-{{ acc.id }}">
-                <button class="btn btn-sm {% if acc.responded %}btn-outline{% else %}btn-danger{% endif %}"
-                  id="incident-action-{{ acc.id }}"
-                  onclick="markResponded('{{ acc.id }}')">
-                  {% if acc.responded %}Close{% else %}Respond{% endif %}
+                <button class="btn btn-sm btn-danger"
+                  id="respond-action-{{ acc.id }}"
+                  onclick="respondAlert('{{ acc.id }}')"
+                  {% if acc.responded %}style="display:none;"{% endif %}>
+                  Respond
+                </button>
+                <button class="btn btn-sm btn-outline"
+                  id="close-action-{{ acc.id }}"
+                  onclick="closeAlert('{{ acc.id }}')"
+                  {% if not acc.responded %}style="display:none;"{% endif %}>
+                  Close Alert
                 </button>
               </div>
             </div>
@@ -164,26 +171,12 @@ function applyIncidentState(id, data) {
   const badge = document.getElementById(`incident-badge-${id}`);
   const desc = document.getElementById(`incident-desc-${id}`);
   const statusTag = document.getElementById(`incident-status-tag-${id}`);
-  const actionBtn = document.getElementById(`incident-action-${id}`);
-  const actionWrap = document.getElementById(`incident-actions-${id}`);
   const card = document.getElementById(`incident-${id}`);
+  const respondBtn = document.getElementById(`respond-action-${id}`);
+  const closeBtn = document.getElementById(`close-action-${id}`);
 
   if (data.closed) {
-    if (card) {
-      card.style.opacity = '0.72';
-    }
-    if (stateChip) stateChip.textContent = 'CLOSED';
-    if (badge) {
-      badge.textContent = 'Closed';
-      badge.className = 'severity-chip sev-low';
-    }
-    if (desc) desc.textContent = 'Incident closed. It will no longer be counted as active.';
-    if (statusTag) {
-      statusTag.className = 'dispatch-tag';
-      statusTag.innerHTML = '<svg width="10" height="10" fill="none" stroke="currentColor" stroke-width="2.5" viewBox="0 0 24 24"><polyline points="20 6 9 17 4 12"/></svg>Status: Closed';
-    }
-    if (actionWrap) actionWrap.remove();
-    else if (actionBtn) actionBtn.remove();
+    if (card) card.remove();
     return;
   }
 
@@ -198,20 +191,14 @@ function applyIncidentState(id, data) {
       statusTag.className = 'dispatch-tag ok';
       statusTag.innerHTML = '<svg width="10" height="10" fill="none" stroke="currentColor" stroke-width="2.5" viewBox="0 0 24 24"><polyline points="20 6 9 17 4 12"/></svg>Status: Responded';
     }
-    if (actionBtn) {
-      actionBtn.textContent = 'Close';
-      actionBtn.className = 'btn btn-sm btn-outline';
-    }
+    if (respondBtn) respondBtn.style.display = 'none';
+    if (closeBtn) closeBtn.style.display = '';
   }
 }
 
-async function markResponded(id) {
+async function respondAlert(id) {
   try {
-    const res = await fetch('/mark_responded', {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ id })
-    });
+    const res = await fetch(`/respond_alert/${id}`, { method: 'POST' });
     const data = await res.json();
     if (!res.ok || !data.success) {
       showToast(data.error || 'Unable to update incident status.');
@@ -224,6 +211,24 @@ async function markResponded(id) {
   } catch (e) {
     console.error(e);
     showToast('Unable to update incident status right now.');
+  }
+}
+
+async function closeAlert(id) {
+  try {
+    const res = await fetch(`/close_alert/${id}`, { method: 'POST' });
+    const data = await res.json();
+    if (!res.ok || !data.success) {
+      showToast(data.error || 'Unable to close incident.');
+      return;
+    }
+
+    updateBadgeCount('activeAlertsBadge', data.active_alerts_count);
+    applyIncidentState(id, data);
+    showToast(data.message || 'Incident closed.');
+  } catch (e) {
+    console.error(e);
+    showToast('Unable to close incident right now.');
   }
 }
 

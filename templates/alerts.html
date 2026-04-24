@@ -136,9 +136,15 @@
               <div style="margin-left:auto; display:flex; gap:0.5rem;" id="incident-actions-{{ acc.id }}">
                 <button class="btn btn-sm {% if acc.notified %}btn-outline{% else %}btn-danger{% endif %}"
                   id="report-action-{{ acc.id }}"
-                  onclick="contactAuthority('{{ acc.id }}')"
+                  onclick="reportToResponder('{{ acc.id }}')"
                   {{ 'disabled' if acc.notified else '' }}>
-                  {% if acc.notified %}Reported{% else %}Report to Authorities{% endif %}
+                  {% if acc.notified %}Sent to Responder{% else %}Report to Responder{% endif %}
+                </button>
+                <button class="btn btn-sm btn-outline"
+                  id="false-alarm-action-{{ acc.id }}"
+                  onclick="markFalseAlarm('{{ acc.id }}')"
+                  {{ 'disabled' if acc.notified else '' }}>
+                  False Alarm
                 </button>
                 <button class="btn btn-sm btn-outline" id="responder-state-{{ acc.id }}" disabled>
                   {% if acc.status == 'Responded' %}Responded{% elif acc.status == 'Active' %}Awaiting Responder{% else %}New Incident{% endif %}
@@ -182,6 +188,7 @@ function applyAdminIncidentState(id) {
   const desc = document.getElementById(`incident-desc-${id}`);
   const statusTag = document.getElementById(`incident-status-tag-${id}`);
   const reportBtn = document.getElementById(`report-action-${id}`);
+  const falseAlarmBtn = document.getElementById(`false-alarm-action-${id}`);
   const responderState = document.getElementById(`responder-state-${id}`);
 
   if (stateChip) stateChip.textContent = 'ACTIVE';
@@ -195,20 +202,24 @@ function applyAdminIncidentState(id) {
     statusTag.innerHTML = '<svg width="10" height="10" fill="none" stroke="currentColor" stroke-width="2.5" viewBox="0 0 24 24"><polyline points="20 6 9 17 4 12"/></svg>Status: Active';
   }
   if (reportBtn) {
-    reportBtn.textContent = 'Reported';
+    reportBtn.textContent = 'Sent to Responder';
     reportBtn.className = 'btn btn-sm btn-outline';
     reportBtn.disabled = true;
   }
+  if (falseAlarmBtn) falseAlarmBtn.disabled = true;
   if (responderState) responderState.textContent = 'Awaiting Responder';
 }
 
-async function contactAuthority(id) {
+function removeIncidentCard(id) {
+  const card = document.getElementById(`incident-${id}`);
+  if (card) {
+    card.remove();
+  }
+}
+
+async function reportToResponder(id) {
   try {
-    const res = await fetch('/contact_authority', {
-      method: 'POST',
-      headers: {'Content-Type': 'application/json'},
-      body: JSON.stringify({id})
-    });
+    const res = await fetch(`/report_alert/${id}`, { method: 'POST' });
     const data = await res.json();
     if (!res.ok || !data.success) {
       showToast(data.error || 'Unable to report incident.');
@@ -221,6 +232,24 @@ async function contactAuthority(id) {
   } catch (e) {
     console.error(e);
     showToast('Unable to report incident right now.');
+  }
+}
+
+async function markFalseAlarm(id) {
+  try {
+    const res = await fetch(`/false_alarm/${id}`, { method: 'POST' });
+    const data = await res.json();
+    if (!res.ok || !data.success) {
+      showToast(data.error || 'Unable to mark false alarm.');
+      return;
+    }
+
+    updateBadgeCount('activeAlertsBadge', data.active_alerts_count);
+    removeIncidentCard(id);
+    showToast(data.message || 'Alert marked as false alarm.');
+  } catch (e) {
+    console.error(e);
+    showToast('Unable to update incident right now.');
   }
 }
 
