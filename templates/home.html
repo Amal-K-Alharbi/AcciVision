@@ -1,0 +1,145 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Dashboard - AcciVision</title>
+  <link rel="stylesheet" href="{{ url_for('static', filename='css/style.css') }}">
+</head>
+<body>
+<div class="app-shell">
+
+  {% include 'sidebar.html' %}
+
+  <div class="main">
+    <div class="topbar">
+      <div class="topbar-left">
+        <span class="topbar-title">{{ dashboard_title }}</span>
+      </div>
+      <div class="topbar-right">
+        <div class="topbar-status">
+          <span class="status-dot"></span>
+          System Online
+        </div>
+        <span style="font-size:0.72rem; color:var(--t3);" id="topbarTime"></span>
+      </div>
+    </div>
+
+    <div class="page-content">
+      <div class="stats-row">
+        <div class="stat-card fade-in fade-in-1">
+          <div>
+            <div class="stat-label">Active Alerts</div>
+            <div class="stat-value red">{{ active_alerts_count }}</div>
+            <div class="stat-sub" style="color:var(--red-soft);">
+              <svg width="10" height="10" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24"><polyline points="18 15 12 9 6 15"/></svg>
+              Open incidents not yet closed
+            </div>
+          </div>
+          <div class="stat-icon" style="background:var(--red-bg); color:var(--red-soft);">
+            <svg width="18" height="18" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24">
+              <path d="M10.29 3.86L1.82 18a2 2 0 0 0 1.71 3h16.94a2 2 0 0 0 1.71-3L13.71 3.86a2 2 0 0 0-3.42 0z"/><line x1="12" y1="9" x2="12" y2="13"/><line x1="12" y1="17" x2="12.01" y2="17"/>
+            </svg>
+          </div>
+        </div>
+
+        <div class="stat-card fade-in fade-in-2">
+          <div>
+            <div class="stat-label">Cameras Online</div>
+            <div class="stat-value blue">{{ cameras_online_count }}/{{ cameras_total_count }}</div>
+            <div class="stat-sub">
+              <svg width="10" height="10" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24"><circle cx="12" cy="12" r="10"/><polyline points="12 6 12 12 16 14"/></svg>
+              Operational status
+            </div>
+          </div>
+          <div class="stat-icon" style="background:rgba(77,163,247,0.1); color:var(--blue-text);">
+            <svg width="18" height="18" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24">
+              <polygon points="23 7 16 12 23 17 23 7"/><rect x="1" y="5" width="15" height="14" rx="2"/>
+            </svg>
+          </div>
+        </div>
+
+        <div class="stat-card fade-in fade-in-3">
+          <div>
+            <div class="stat-label">Events Today</div>
+            <div class="stat-value">{{ events_today_count }}</div>
+            <div class="stat-sub">
+              <svg width="10" height="10" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24"><polyline points="18 15 12 9 6 15"/></svg>
+              Recorded incidents in the last 24 hours
+            </div>
+          </div>
+          <div class="stat-icon" style="background:rgba(34,197,94,0.1); color:var(--green);">
+            <svg width="18" height="18" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24">
+              <polyline points="22 12 18 12 15 21 9 3 6 12 2 12"/>
+            </svg>
+          </div>
+        </div>
+
+        <div class="stat-card fade-in fade-in-4">
+          <div>
+            <div class="stat-label">Avg Response Time</div>
+            <div class="stat-value amber" style="font-size:1.15rem;">{{ avg_response_time_label }}</div>
+            <div class="stat-sub neutral">Current dashboard role: {{ user_role_label }}</div>
+          </div>
+          <div class="stat-icon" style="background:var(--amber-bg); color:var(--amber);">
+            <svg width="18" height="18" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24">
+              <circle cx="12" cy="12" r="10"/><polyline points="12 6 12 12 16 14"/>
+            </svg>
+          </div>
+        </div>
+      </div>
+
+      <div class="panel fade-in">
+        <div class="panel-header">
+          <div class="panel-title">
+            <svg width="14" height="14" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24">
+              <polyline points="22 12 18 12 15 21 9 3 6 12 2 12"/>
+            </svg>
+            Recent Events
+          </div>
+          <a href="{{ url_for('alerts_page') }}" style="font-size:0.72rem; color:var(--blue-text);">View All</a>
+        </div>
+
+        <table class="events-table">
+          <thead>
+            <tr>
+              <th>Event ID</th>
+              <th>Location</th>
+              <th>Severity</th>
+              <th>Status</th>
+              <th>Time</th>
+            </tr>
+          </thead>
+          <tbody>
+            {% for event in recent_events %}
+            <tr>
+              <td><span class="event-id">{{ event.event_id }}</span></td>
+              <td><span class="event-location">{{ event.location }}</span></td>
+              <td>
+                <span class="severity-chip {% if event.severity == 'Critical' %}sev-critical{% elif event.severity == 'High' %}sev-high{% elif event.severity == 'Medium' %}sev-medium{% else %}sev-low{% endif %}">
+                  {{ event.severity }}
+                </span>
+              </td>
+              <td><span class="event-status">{{ event.status }}</span></td>
+              <td><span class="event-time">{{ event.time }}</span></td>
+            </tr>
+            {% endfor %}
+          </tbody>
+        </table>
+      </div>
+    </div>
+
+    <footer class="footer">AcciVision - AI-Powered Accident Detection System</footer>
+  </div>
+</div>
+
+<script>
+  function tick() {
+    const el = document.getElementById('topbarTime');
+    if (el) el.textContent = new Date().toLocaleTimeString('en-US', { hour: '2-digit', minute: '2-digit', second: '2-digit' });
+  }
+  tick();
+  setInterval(tick, 1000);
+</script>
+</body>
+</html>

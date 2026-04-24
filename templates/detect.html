@@ -1,0 +1,377 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Test Model - AcciVision</title>
+  <link rel="stylesheet" href="{{ url_for('static', filename='css/style.css') }}">
+</head>
+<body>
+<div class="app-shell">
+
+  {% include 'sidebar.html' %}
+
+  <div class="main">
+    <div class="topbar">
+      <div class="topbar-left">
+        <span class="topbar-title">Test Model</span>
+      </div>
+      <div class="topbar-right">
+        <div class="topbar-status">
+          <span class="status-dot"></span>
+          Model Ready
+        </div>
+      </div>
+    </div>
+
+    <div class="page-content">
+      <div id="msgError" class="msg msg-error"></div>
+      <div id="msgSuccess" class="msg msg-success"></div>
+
+      <div id="uploadZone" class="upload-zone" style="margin-bottom:1rem;">
+        <div class="upload-icon">UP</div>
+        <h3>Drop your video here or click to browse</h3>
+        <p>Supports MP4, AVI, MOV, MKV, WMV, WebM - Max 200 MB</p>
+        <input type="file" id="videoInput" accept=".mp4,.avi,.mov,.mkv,.wmv,.webm">
+      </div>
+
+      <div id="cameraZone" class="upload-zone" style="margin-bottom:1rem; cursor:default;">
+        <div class="upload-icon">CAM</div>
+        <h3>Live Detection With Device Camera</h3>
+        <p>Open this device camera in the browser and run live accident detection without uploading a file.</p>
+        <button type="button" class="btn btn-primary" onclick="startLiveDetection()">Open Camera</button>
+      </div>
+
+      <div id="progressWrap" class="progress-wrap">
+        <div class="progress-bar-wrap">
+          <div id="progressFill" class="progress-fill" style="width:0%"></div>
+        </div>
+        <div id="progressText" class="progress-text">Uploading...</div>
+      </div>
+
+      <div id="videoPanel" class="hidden">
+        <div class="video-grid">
+          <div class="feed-panel">
+            <div class="feed-header">
+              <span class="feed-label">Live Feed</span>
+              <div class="feed-live">
+                <span class="live-dot"></span>
+                <span id="videoStatus">Processing...</span>
+              </div>
+            </div>
+            <div class="feed-body">
+              <img id="videoFeed" src="" alt="Detection Feed" style="width:100%; max-height:320px; object-fit:contain;">
+            </div>
+            <div class="feed-footer">
+              <button class="btn btn-danger btn-sm" onclick="stopVideo()">Stop</button>
+              <button class="btn btn-outline btn-sm" onclick="resetVideo()">New Video</button>
+              <span id="videoFilename" style="margin-left:auto; font-size:0.68rem; color:var(--t3); font-family:var(--font-m);"></span>
+            </div>
+          </div>
+
+          <div class="feed-panel">
+            <div class="feed-header">
+              <span class="feed-label">Detection Log</span>
+              <span style="font-size:0.65rem; color:var(--green);">Live</span>
+            </div>
+            <div class="feed-body" style="min-height:200px; padding:1rem; background:var(--bg3); display:block;">
+              <div id="detectionLog" style="font-family:var(--font-m); font-size:0.72rem; color:var(--t2); line-height:2;">
+                <div style="color:var(--t3);">Waiting for detection events...</div>
+              </div>
+            </div>
+            <div class="feed-footer" style="justify-content:space-between;">
+              <span style="font-size:0.7rem; color:var(--t3);">Model: YOLOv8 best.pt</span>
+              <span style="font-size:0.7rem; color:var(--t3);" id="frameCount">Frames: 0</span>
+            </div>
+          </div>
+        </div>
+      </div>
+
+      <div id="cameraPanel" class="hidden" style="margin-top:1rem;">
+        <div class="video-grid">
+          <div class="feed-panel">
+            <div class="feed-header">
+              <span class="feed-label">Device Camera Live Feed</span>
+              <div class="feed-live">
+                <span class="live-dot"></span>
+                <span id="cameraStatus">Camera idle</span>
+              </div>
+            </div>
+            <div class="feed-body">
+              <img id="cameraFeed" src="" alt="Live Camera Detection Feed" style="width:100%; max-height:320px; object-fit:contain;">
+              <video id="cameraPreview" autoplay muted playsinline class="hidden"></video>
+              <canvas id="cameraCanvas" class="hidden"></canvas>
+            </div>
+            <div class="feed-footer">
+              <button class="btn btn-danger btn-sm" onclick="stopLiveDetection()">Stop</button>
+              <button class="btn btn-outline btn-sm" onclick="resetLiveDetection()">Reset Camera</button>
+              <span style="margin-left:auto; font-size:0.68rem; color:var(--t3); font-family:var(--font-m);">Source: This Device</span>
+            </div>
+          </div>
+
+          <div class="feed-panel">
+            <div class="feed-header">
+              <span class="feed-label">Live Detection Log</span>
+              <span style="font-size:0.65rem; color:var(--green);">Browser Camera</span>
+            </div>
+            <div class="feed-body" style="min-height:200px; padding:1rem; background:var(--bg3); display:block;">
+              <div id="cameraDetectionLog" style="font-family:var(--font-m); font-size:0.72rem; color:var(--t2); line-height:2;">
+                <div style="color:var(--t3);">Waiting for live camera events...</div>
+              </div>
+            </div>
+            <div class="feed-footer" style="justify-content:space-between;">
+              <span style="font-size:0.7rem; color:var(--t3);">Model: YOLOv8 best.pt</span>
+              <span style="font-size:0.7rem; color:var(--t3);" id="cameraFrameCount">Frames: 0</span>
+            </div>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <footer class="footer">AcciVision - AI-Powered Accident Detection System</footer>
+  </div>
+</div>
+
+<audio id="warningSound" preload="auto">
+  <source src="{{ url_for('static', filename='assets/warning.mp3') }}" type="audio/mpeg">
+</audio>
+
+<script>
+let soundPollingInterval = null;
+let soundCooldown = false;
+let activeSource = null;
+let videoFrameCount = 0;
+let cameraFrameCount = 0;
+let cameraStream = null;
+let cameraProcessingInterval = null;
+
+const msgError = document.getElementById('msgError');
+const msgSuccess = document.getElementById('msgSuccess');
+const uploadZone = document.getElementById('uploadZone');
+const videoInput = document.getElementById('videoInput');
+const progressWrap = document.getElementById('progressWrap');
+const progressFill = document.getElementById('progressFill');
+const progressText = document.getElementById('progressText');
+const videoPanel = document.getElementById('videoPanel');
+const cameraPanel = document.getElementById('cameraPanel');
+const videoFeed = document.getElementById('videoFeed');
+const cameraFeed = document.getElementById('cameraFeed');
+const videoStatus = document.getElementById('videoStatus');
+const cameraStatus = document.getElementById('cameraStatus');
+const videoFilename = document.getElementById('videoFilename');
+const frameCount = document.getElementById('frameCount');
+const cameraFrameCountEl = document.getElementById('cameraFrameCount');
+const detectionLog = document.getElementById('detectionLog');
+const cameraDetectionLog = document.getElementById('cameraDetectionLog');
+const warningSound = document.getElementById('warningSound');
+const cameraPreview = document.getElementById('cameraPreview');
+const cameraCanvas = document.getElementById('cameraCanvas');
+
+function showMsg(type, text) {
+  const errorMode = type === 'error';
+  msgError.classList.toggle('show', errorMode);
+  msgSuccess.classList.toggle('show', !errorMode);
+  (errorMode ? msgError : msgSuccess).textContent = text;
+}
+
+function clearMsgs() {
+  msgError.classList.remove('show');
+  msgSuccess.classList.remove('show');
+}
+
+function resetLog(targetEl, placeholder) {
+  targetEl.innerHTML = '<div style="color:var(--t3);">' + placeholder + '</div>';
+}
+
+function logDetection(msg, targetEl) {
+  const entry = document.createElement('div');
+  entry.textContent = '[' + new Date().toLocaleTimeString() + '] ' + msg;
+  targetEl.prepend(entry);
+}
+
+async function pollAccidentStatus() {
+  try {
+    const res = await fetch('{{ url_for("accident_status") }}');
+    const data = await res.json();
+    if (data.accident && !soundCooldown) {
+      warningSound.currentTime = 0;
+      warningSound.play().catch(() => {});
+      soundCooldown = true;
+      setTimeout(() => { soundCooldown = false; }, 2500);
+      const logTarget = activeSource === 'camera' ? cameraDetectionLog : detectionLog;
+      logDetection('ACCIDENT DETECTED', logTarget);
+    }
+  } catch (err) {
+    console.error(err);
+  }
+}
+
+function ensurePolling() {
+  if (soundPollingInterval) return;
+  soundPollingInterval = setInterval(pollAccidentStatus, 1500);
+}
+
+function stopPollingIfIdle() {
+  if (activeSource || !soundPollingInterval) return;
+  clearInterval(soundPollingInterval);
+  soundPollingInterval = null;
+}
+
+async function uploadVideo(file) {
+  clearMsgs();
+  const formData = new FormData();
+  formData.append('video', file);
+  progressWrap.classList.add('active');
+  progressFill.style.width = '15%';
+  progressText.textContent = 'Uploading...';
+
+  try {
+    const response = await fetch('{{ url_for("upload_video") }}', {
+      method: 'POST',
+      body: formData
+    });
+    const data = await response.json();
+    if (!response.ok || !data.success) throw new Error(data.error || 'Upload failed.');
+
+    progressFill.style.width = '100%';
+    progressText.textContent = 'Upload complete! Starting detection...';
+    uploadZone.classList.add('hidden');
+    videoPanel.classList.remove('hidden');
+    videoFilename.textContent = file.name;
+    videoFeed.src = '{{ url_for("video_feed") }}?t=' + Date.now();
+    videoStatus.textContent = 'Live detection...';
+    activeSource = 'video';
+    videoFrameCount = 0;
+    frameCount.textContent = 'Frames: 0';
+    resetLog(detectionLog, 'Waiting for detection events...');
+    ensurePolling();
+    showMsg('success', 'Detection started - ' + file.name);
+  } catch (error) {
+    showMsg('error', error.message);
+    progressWrap.classList.remove('active');
+  }
+}
+
+videoInput.addEventListener('change', (event) => {
+  const file = event.target.files[0];
+  if (file) uploadVideo(file);
+});
+
+uploadZone.addEventListener('dragover', (event) => {
+  event.preventDefault();
+  uploadZone.classList.add('dragover');
+});
+
+uploadZone.addEventListener('dragleave', () => {
+  uploadZone.classList.remove('dragover');
+});
+
+uploadZone.addEventListener('drop', (event) => {
+  event.preventDefault();
+  uploadZone.classList.remove('dragover');
+  const file = event.dataTransfer.files[0];
+  if (file) uploadVideo(file);
+});
+
+async function stopVideo(showToast = true) {
+  await fetch('{{ url_for("stop_video") }}', { method: 'POST' });
+  videoFeed.src = '';
+  videoStatus.textContent = 'Stopped';
+  activeSource = activeSource === 'video' ? null : activeSource;
+  stopPollingIfIdle();
+  if (showToast) showMsg('success', 'Detection stopped.');
+}
+
+async function resetVideo() {
+  await stopVideo(false);
+  videoPanel.classList.add('hidden');
+  uploadZone.classList.remove('hidden');
+  progressWrap.classList.remove('active');
+  progressFill.style.width = '0%';
+  videoInput.value = '';
+  videoFilename.textContent = '';
+  resetLog(detectionLog, 'Waiting for detection events...');
+  frameCount.textContent = 'Frames: 0';
+}
+
+async function startLiveDetection() {
+  clearMsgs();
+  if (cameraStream) {
+    showMsg('success', 'Live camera detection is already running.');
+    return;
+  }
+
+  try {
+    cameraStream = await navigator.mediaDevices.getUserMedia({ video: true, audio: false });
+    cameraPreview.srcObject = cameraStream;
+    await cameraPreview.play();
+
+    cameraPanel.classList.remove('hidden');
+    cameraStatus.textContent = 'Live detection...';
+    activeSource = 'camera';
+    cameraFrameCount = 0;
+    cameraFrameCountEl.textContent = 'Frames: 0';
+    resetLog(cameraDetectionLog, 'Waiting for live camera events...');
+    ensurePolling();
+
+    cameraProcessingInterval = setInterval(async () => {
+      if (!cameraStream) return;
+      cameraCanvas.width = cameraPreview.videoWidth || 640;
+      cameraCanvas.height = cameraPreview.videoHeight || 480;
+      const ctx = cameraCanvas.getContext('2d');
+      ctx.drawImage(cameraPreview, 0, 0, cameraCanvas.width, cameraCanvas.height);
+      const dataUrl = cameraCanvas.toDataURL('image/jpeg', 0.8);
+
+      const response = await fetch('{{ url_for("process_camera_frame") }}', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ image: dataUrl })
+      });
+      const data = await response.json();
+      if (data.success) {
+        cameraFeed.src = 'data:image/jpeg;base64,' + data.image;
+        cameraFrameCount += 1;
+        cameraFrameCountEl.textContent = 'Frames: ' + cameraFrameCount;
+      }
+    }, 900);
+
+    showMsg('success', 'Device camera opened for live detection.');
+  } catch (error) {
+    showMsg('error', error.message || 'Unable to access the camera.');
+  }
+}
+
+async function stopLiveDetection(showToast = true) {
+  await fetch('{{ url_for("stop_camera") }}', { method: 'POST' });
+  if (cameraProcessingInterval) {
+    clearInterval(cameraProcessingInterval);
+    cameraProcessingInterval = null;
+  }
+  if (cameraStream) {
+    cameraStream.getTracks().forEach((track) => track.stop());
+    cameraStream = null;
+  }
+  cameraPreview.srcObject = null;
+  cameraFeed.src = '';
+  cameraStatus.textContent = 'Camera idle';
+  activeSource = activeSource === 'camera' ? null : activeSource;
+  stopPollingIfIdle();
+  if (showToast) showMsg('success', 'Live camera detection stopped.');
+}
+
+async function resetLiveDetection() {
+  await stopLiveDetection(false);
+  cameraPanel.classList.add('hidden');
+  resetLog(cameraDetectionLog, 'Waiting for live camera events...');
+  cameraFrameCountEl.textContent = 'Frames: 0';
+}
+
+setInterval(() => {
+  if (activeSource === 'video') {
+    videoFrameCount += 1;
+    frameCount.textContent = 'Frames: ' + videoFrameCount;
+  }
+}, 1000);
+</script>
+</body>
+</html>

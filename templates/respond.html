@@ -1,0 +1,233 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Responder Dashboard - AcciVision</title>
+  <link rel="stylesheet" href="{{ url_for('static', filename='css/style.css') }}">
+</head>
+<body>
+<div class="app-shell">
+
+  {% include 'sidebar.html' %}
+
+  <div class="main">
+
+    <div class="topbar">
+      <div class="topbar-left">
+        <span class="topbar-title">Responder Dashboard</span>
+      </div>
+      <div class="topbar-right">
+        <div class="topbar-status">
+          <span class="status-dot"></span>
+          Ready for Dispatch
+        </div>
+      </div>
+    </div>
+
+    <div class="page-content">
+
+      {% set active_accidents = accidents | rejectattr('closed') | selectattr('notified') | list %}
+      {% if active_accidents|length > 0 %}
+      <div class="em-banner">
+        <div class="em-left">
+          <div class="em-icon-wrap">!</div>
+          <div>
+            <div class="em-title">Active Notifications</div>
+            <div class="em-sub">Review current alerts and mark each case when a responder has handled it.</div>
+          </div>
+        </div>
+      </div>
+      {% endif %}
+
+      {% if active_accidents|length == 0 %}
+      <div class="empty-state">
+        <div class="empty-icon">O</div>
+        <h3>No Active Notifications</h3>
+        <p>Alerts will appear here after an admin contacts the authorities.</p>
+      </div>
+      {% else %}
+      <div class="alerts-list">
+        {% for acc in active_accidents %}
+        <div class="alert-card {% if loop.first and not acc.responded %}is-critical{% elif loop.index == 2 and not acc.responded %}is-high{% endif %} fade-in" id="incident-{{ acc.id }}">
+          <div class="alert-thumb">
+            <img src="{{ url_for('static', filename='accidents/' + acc.image) }}" alt="Accident">
+            <div class="alert-thumb-overlay">
+              <span class="detection-chip">ACCIDENT</span>
+                <span class="conf-chip" id="incident-state-{{ acc.id }}">{{ acc.status | upper }}</span>
+            </div>
+          </div>
+
+          <div class="alert-body">
+            <div class="alert-top">
+              <div class="alert-head-left">
+                {% if acc.responded %}
+                <span class="severity-chip sev-low" id="incident-badge-{{ acc.id }}">Responded</span>
+                {% elif loop.first %}
+                <span class="severity-chip sev-critical" id="incident-badge-{{ acc.id }}">Active</span>
+                {% elif loop.index == 2 %}
+                <span class="severity-chip sev-high" id="incident-badge-{{ acc.id }}">Active</span>
+                {% else %}
+                <span class="severity-chip sev-medium" id="incident-badge-{{ acc.id }}">Active</span>
+                {% endif %}
+
+                <div class="alert-id">{{ acc.id | upper }}</div>
+                <div class="alert-location">
+                  {% if loop.first %}I-95 Northbound, MM 42
+                  {% elif loop.index == 2 %}Downtown Sector 4
+                  {% else %}Detected Zone{% endif %}
+                </div>
+                <div class="alert-desc" id="incident-desc-{{ acc.id }}">
+                  {% if acc.responded %}
+                  Response received. Close the case to remove it from active alerts.
+                  {% elif loop.first %}
+                  Multiple vehicle collision detected with possible fire
+                  {% elif loop.index == 2 %}
+                  Pedestrian detected in restricted zone
+                  {% else %}
+                  Accident detected in monitored area{% endif %}
+                </div>
+              </div>
+
+              <div style="text-align:right;">
+                <div class="alert-elapsed">{{ acc.elapsed }}</div>
+                <div class="alert-elapsed-label">Time Elapsed</div>
+              </div>
+            </div>
+
+            <div class="alert-footer">
+              {% if acc.notified %}
+              <span class="dispatch-tag ok">
+                <svg width="10" height="10" fill="none" stroke="currentColor" stroke-width="2.5" viewBox="0 0 24 24"><polyline points="20 6 9 17 4 12"/></svg>
+                Authority Contacted
+              </span>
+              {% else %}
+              <span class="dispatch-tag">
+                <svg width="10" height="10" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24"><circle cx="12" cy="12" r="10"/><line x1="12" y1="8" x2="12" y2="12"/><line x1="12" y1="16" x2="12.01" y2="16"/></svg>
+                Awaiting Contact Confirmation
+              </span>
+              {% endif %}
+
+              {% if acc.responded %}
+              <span class="dispatch-tag ok" id="incident-status-tag-{{ acc.id }}">
+                <svg width="10" height="10" fill="none" stroke="currentColor" stroke-width="2.5" viewBox="0 0 24 24"><polyline points="20 6 9 17 4 12"/></svg>
+                Status: Responded
+              </span>
+              {% else %}
+              <span class="dispatch-tag warn" id="incident-status-tag-{{ acc.id }}">
+                <svg width="10" height="10" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24"><circle cx="12" cy="12" r="10"/><line x1="12" y1="8" x2="12" y2="12"/><line x1="12" y1="16" x2="12.01" y2="16"/></svg>
+                Status: Active
+              </span>
+              {% endif %}
+
+              <div style="margin-left:auto; display:flex; gap:0.5rem;" id="incident-actions-{{ acc.id }}">
+                <button class="btn btn-sm {% if acc.responded %}btn-outline{% else %}btn-danger{% endif %}"
+                  id="incident-action-{{ acc.id }}"
+                  onclick="markResponded('{{ acc.id }}')">
+                  {% if acc.responded %}Close{% else %}Respond{% endif %}
+                </button>
+              </div>
+            </div>
+          </div>
+        </div>
+        {% endfor %}
+      </div>
+      {% endif %}
+
+    </div>
+
+    <footer class="footer">AcciVision - Responder Interface</footer>
+  </div>
+
+</div>
+
+<div id="toast" class="toast">
+  <svg width="16" height="16" fill="none" stroke="currentColor" stroke-width="2.5" viewBox="0 0 24 24"><polyline points="20 6 9 17 4 12"/></svg>
+  <span id="toastMsg"></span>
+</div>
+
+<script>
+function showToast(msg) {
+  const t = document.getElementById('toast');
+  document.getElementById('toastMsg').textContent = msg;
+  t.classList.add('show');
+  setTimeout(() => t.classList.remove('show'), 3000);
+}
+
+function updateBadgeCount(id, value) {
+  const node = document.getElementById(id);
+  if (node && typeof value === 'number') node.textContent = value;
+}
+
+function applyIncidentState(id, data) {
+  const stateChip = document.getElementById(`incident-state-${id}`);
+  const badge = document.getElementById(`incident-badge-${id}`);
+  const desc = document.getElementById(`incident-desc-${id}`);
+  const statusTag = document.getElementById(`incident-status-tag-${id}`);
+  const actionBtn = document.getElementById(`incident-action-${id}`);
+  const actionWrap = document.getElementById(`incident-actions-${id}`);
+  const card = document.getElementById(`incident-${id}`);
+
+  if (data.closed) {
+    if (card) {
+      card.style.opacity = '0.72';
+    }
+    if (stateChip) stateChip.textContent = 'CLOSED';
+    if (badge) {
+      badge.textContent = 'Closed';
+      badge.className = 'severity-chip sev-low';
+    }
+    if (desc) desc.textContent = 'Incident closed. It will no longer be counted as active.';
+    if (statusTag) {
+      statusTag.className = 'dispatch-tag';
+      statusTag.innerHTML = '<svg width="10" height="10" fill="none" stroke="currentColor" stroke-width="2.5" viewBox="0 0 24 24"><polyline points="20 6 9 17 4 12"/></svg>Status: Closed';
+    }
+    if (actionWrap) actionWrap.remove();
+    else if (actionBtn) actionBtn.remove();
+    return;
+  }
+
+  if (data.responded) {
+    if (stateChip) stateChip.textContent = 'RESPONDED';
+    if (badge) {
+      badge.textContent = 'Responded';
+      badge.className = 'severity-chip sev-low';
+    }
+    if (desc) desc.textContent = 'Response received. Close the case to remove it from active alerts.';
+    if (statusTag) {
+      statusTag.className = 'dispatch-tag ok';
+      statusTag.innerHTML = '<svg width="10" height="10" fill="none" stroke="currentColor" stroke-width="2.5" viewBox="0 0 24 24"><polyline points="20 6 9 17 4 12"/></svg>Status: Responded';
+    }
+    if (actionBtn) {
+      actionBtn.textContent = 'Close';
+      actionBtn.className = 'btn btn-sm btn-outline';
+    }
+  }
+}
+
+async function markResponded(id) {
+  try {
+    const res = await fetch('/mark_responded', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ id })
+    });
+    const data = await res.json();
+    if (!res.ok || !data.success) {
+      showToast(data.error || 'Unable to update incident status.');
+      return;
+    }
+
+    updateBadgeCount('activeAlertsBadge', data.active_alerts_count);
+    applyIncidentState(id, data);
+    showToast(data.message || 'Incident status updated.');
+  } catch (e) {
+    console.error(e);
+    showToast('Unable to update incident status right now.');
+  }
+}
+
+setInterval(() => location.reload(), 30000);
+</script>
+</body>
+</html>

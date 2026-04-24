@@ -1,0 +1,93 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Login — AcciVision</title>
+  <link rel="stylesheet" href="{{ url_for('static', filename='css/style.css') }}">
+</head>
+<body>
+
+<div class="auth-page">
+  <div class="auth-box fade-in">
+
+    <div class="auth-brand">
+      <div class="brand-icon">⚡</div>
+      <div>
+        <div class="brand-name">AcciVision</div>
+        <div class="brand-sub">Traffic AI System</div>
+      </div>
+    </div>
+
+    {% if error %}
+    <div class="msg msg-error show">{{ error }}</div>
+    {% endif %}
+    {% if success %}
+    <div class="msg msg-success show">{{ success }}</div>
+    {% endif %}
+
+    <!-- Login Form -->
+    <div id="loginForm" class="auth-form-wrap">
+      <h2>Welcome Back</h2>
+      <p class="auth-subtitle">Sign in to access the detection system</p>
+
+      <form method="POST" action="{{ url_for('login') }}">
+        <input type="hidden" name="form_type" value="login">
+        <div class="form-group">
+          <label for="login_email">Email</label>
+          <input type="email" id="login_email" name="email" placeholder="Enter your email" required>
+        </div>
+        <div class="form-group">
+          <label for="login_password">Password</label>
+          <input type="password" id="login_password" name="password" placeholder="Enter your password" required>
+        </div>
+        <button type="submit" class="btn btn-primary btn-block" style="margin-top:0.5rem;">Sign In</button>
+      </form>
+
+      <p class="auth-switch">Don't have an account? <a href="#" onclick="toggleForm('signup')">Sign Up</a></p>
+    </div>
+
+    <!-- Signup Form -->
+    <div id="signupForm" class="auth-form-wrap hidden">
+      <h2>Create Account</h2>
+      <p class="auth-subtitle">Register to start using AcciVision</p>
+
+      <form method="POST" action="{{ url_for('login') }}">
+        <input type="hidden" name="form_type" value="signup">
+        <div class="form-group">
+          <label for="signup_email">Email</label>
+          <input type="email" id="signup_email" name="email" placeholder="Enter your email" required>
+        </div>
+        <div class="form-group">
+          <label for="signup_password">Password</label>
+          <input type="password" id="signup_password" name="password" placeholder="Create a password" required>
+        </div>
+        <div class="form-group">
+          <label for="signup_confirm">Confirm Password</label>
+          <input type="password" id="signup_confirm" name="confirm_password" placeholder="Confirm your password" required>
+        </div>
+        <div class="form-group">
+          <label for="signup_role">Account Role</label>
+          <select id="signup_role" name="role" required>
+            <option value="admin">Admin</option>
+            <option value="responder">Responder</option>
+          </select>
+        </div>
+        <button type="submit" class="btn btn-primary btn-block" style="margin-top:0.5rem;">Create Account</button>
+      </form>
+
+      <p class="auth-switch">Already have an account? <a href="#" onclick="toggleForm('login')">Sign In</a></p>
+    </div>
+
+  </div>
+</div>
+
+<script>
+function toggleForm(f) {
+  document.getElementById('loginForm').classList.toggle('hidden', f === 'signup');
+  document.getElementById('signupForm').classList.toggle('hidden', f !== 'signup');
+}
+{% if show_signup %} toggleForm('signup'); {% endif %}
+</script>
+</body>
+</html>

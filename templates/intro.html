@@ -1,0 +1,204 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>AcciVision - AI Accident Detection</title>
+    <link rel="stylesheet" href="{{ url_for('static', filename='css/style.css') }}">
+</head>
+<body>
+
+    <nav class="navbar">
+        <a href="{{ url_for('intro') }}" class="nav-brand">
+            <span class="icon">A</span>
+            AcciVision
+        </a>
+        <ul class="nav-links">
+            <li><a href="{{ url_for('intro') }}" class="active">Home</a></li>
+            <li><a href="#features">Features</a></li>
+            <li><a href="#how-it-works">How It Works</a></li>
+            <li><a href="{{ url_for('login') }}">Login</a></li>
+        </ul>
+    </nav>
+
+    <section class="hero">
+        <div class="hero-content fade-in">
+            <div class="hero-badge">
+                <span class="dot"></span>
+                AI-Powered Detection
+            </div>
+            <h1>
+                Real-Time<br>
+                <span class="gradient-text">Accident Detection</span><br>
+                Using Computer Vision
+            </h1>
+            <p>
+                Leveraging YOLOv8 deep learning to instantly detect car accidents
+                in video feeds - enabling faster emergency response and saving lives.
+            </p>
+            <div class="hero-actions">
+                <a href="{{ url_for('login') }}" class="btn btn-primary">
+                    Login
+                </a>
+                <a href="#how-it-works" class="btn btn-outline">
+                    How It Works
+                </a>
+            </div>
+        </div>
+    </section>
+
+    <section>
+        <div class="stats-bar fade-in">
+            <div class="stat">
+                <div class="number">YOLOv8</div>
+                <div class="desc">Detection Model</div>
+            </div>
+            <div class="stat">
+                <div class="number">Real-Time</div>
+                <div class="desc">Frame Processing</div>
+            </div>
+            <div class="stat">
+                <div class="number">Video</div>
+                <div class="desc">Upload & Detect</div>
+            </div>
+            <div class="stat">
+                <div class="number">Instant</div>
+                <div class="desc">Alert System</div>
+            </div>
+        </div>
+    </section>
+
+    <section id="features">
+        <div class="section-header">
+            <div class="label">Features</div>
+            <h2>Intelligent Accident Detection</h2>
+            <p>
+                Our system combines cutting-edge computer vision with deep learning
+                to provide accurate, real-time accident detection.
+            </p>
+        </div>
+
+        <div class="features-grid">
+            <div class="feature-card fade-in fade-in-delay-1">
+                <div class="feature-icon red">AI</div>
+                <h3>YOLOv8 Detection</h3>
+                <p>
+                    Powered by the YOLOv8 architecture - one of the most advanced
+                    real-time object detection models. Trained specifically on accident
+                    scenarios for maximum accuracy.
+                </p>
+            </div>
+            <div class="feature-card fade-in fade-in-delay-2">
+                <div class="feature-icon amber">UP</div>
+                <h3>Video Upload Analysis</h3>
+                <p>
+                    Upload dashcam footage, surveillance videos, or any recorded
+                    video file. The system processes each frame and highlights
+                    detected accidents with bounding boxes.
+                </p>
+            </div>
+            <div class="feature-card fade-in fade-in-delay-3">
+                <div class="feature-icon green">AL</div>
+                <h3>Audio Warning Alerts</h3>
+                <p>
+                    When an accident is detected, the system plays an audio warning
+                    sound in the browser along with visual alerts - ensuring
+                    no incident goes unnoticed.
+                </p>
+            </div>
+            <div class="feature-card fade-in fade-in-delay-1">
+                <div class="feature-icon purple">IN</div>
+                <h3>Instant Alerts</h3>
+                <p>
+                    The moment an accident is detected, a visual warning banner
+                    appears with a flashing red border - ensuring the operator
+                    is immediately notified.
+                </p>
+            </div>
+            <div class="feature-card fade-in fade-in-delay-2">
+                <div class="feature-icon red">MC</div>
+                <h3>Multi-Class Detection</h3>
+                <p>
+                    The model distinguishes between normal cars and accident
+                    scenes, drawing green boxes for vehicles and red boxes
+                    with high-visibility labels for detected accidents.
+                </p>
+            </div>
+            <div class="feature-card fade-in fade-in-delay-3">
+                <div class="feature-icon amber">WB</div>
+                <h3>Web-Based Interface</h3>
+                <p>
+                    No software installation required. Access the detection
+                    system from any browser - upload videos and get instant
+                    results through an intuitive web dashboard.
+                </p>
+            </div>
+        </div>
+    </section>
+
+    <section id="how-it-works" style="background: var(--bg-secondary);">
+        <div class="section-header">
+            <div class="label">Process</div>
+            <h2>How It Works</h2>
+            <p>
+                From input to detection in milliseconds - here's the pipeline behind
+                our accident detection system.
+            </p>
+        </div>
+
+        <div class="steps">
+            <div class="step fade-in">
+                <div class="step-number">01</div>
+                <h3>Input Source</h3>
+                <p>Upload a video file (dashcam, surveillance, or any recorded footage).</p>
+            </div>
+            <div class="step fade-in fade-in-delay-1">
+                <div class="step-number">02</div>
+                <h3>Frame Extraction</h3>
+                <p>The video is split into individual frames, processed every 2nd frame for efficiency.</p>
+            </div>
+            <div class="step fade-in fade-in-delay-2">
+                <div class="step-number">03</div>
+                <h3>YOLO Inference</h3>
+                <p>Each frame passes through the YOLOv8 model, which predicts bounding boxes and classes.</p>
+            </div>
+            <div class="step fade-in fade-in-delay-3">
+                <div class="step-number">04</div>
+                <h3>Alert & Display</h3>
+                <p>Accidents are highlighted with red boxes, warning banners, and instant visual alerts.</p>
+            </div>
+        </div>
+    </section>
+
+    <section>
+        <div class="section-header">
+            <div class="label">Technology</div>
+            <h2>Built With</h2>
+        </div>
+        <div class="tech-pills">
+            <span class="tech-pill">Python</span>
+            <span class="tech-pill">Flask</span>
+            <span class="tech-pill">YOLOv8</span>
+            <span class="tech-pill">OpenCV</span>
+            <span class="tech-pill">Ultralytics</span>
+            <span class="tech-pill">Pandas</span>
+            <span class="tech-pill">HTML/CSS/JS</span>
+        </div>
+    </section>
+
+    <section style="background: var(--bg-secondary); text-align: center;">
+        <div class="section-header" style="margin-bottom: 2rem;">
+            <h2>Ready to Use AcciVision?</h2>
+            <p>Sign in to access the dashboard and accident detection system.</p>
+        </div>
+        <a href="{{ url_for('login') }}" class="btn btn-primary" style="font-size: 1.1rem; padding: 16px 36px;">
+            Login
+        </a>
+    </section>
+
+    <footer class="footer">
+        <p>AcciVision - AI-Powered Accident Detection System &nbsp;|&nbsp; Built with YOLOv8 + Flask + OpenCV</p>
+    </footer>
+
+</body>
+</html>
