@@ -1,5 +1,7 @@
+<!-- Standards mode keeps the dashboard overview rendering predictably across browsers. -->
 <!DOCTYPE html>
 <html lang="en">
+<!-- Shared assets and responsive metadata support the main operations overview on common desktop layouts. -->
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
@@ -9,9 +11,11 @@
 <body>
 <div class="app-shell">
 
+  <!-- Navigation remains visible on the overview so users can move from summaries into active workflows quickly. -->
   {% include 'sidebar.html' %}
 
   <div class="main">
+    <!-- The top bar gives the dashboard a stable heading while keeping overall system status visible. -->
     <div class="topbar">
       <div class="topbar-left">
         <span class="topbar-title">{{ dashboard_title }}</span>
@@ -25,6 +29,7 @@
       </div>
     </div>
 
+    <!-- The dashboard body surfaces backend aggregates and recent events for situational awareness. -->
     <div class="page-content">
       <div class="stats-row">
         <div class="stat-card fade-in fade-in-1">

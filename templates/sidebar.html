@@ -1,3 +1,4 @@
+<!-- Sidebar navigation anchors the authenticated layout and keeps global operational context within reach. -->
 <aside class="sidebar">
   <div class="sidebar-brand">
     <div class="brand-icon">A</div>
@@ -7,6 +8,7 @@
     </div>
   </div>
 
+  <!-- Navigation is role-aware so each operator sees routes appropriate to their responsibility. -->
   <nav class="sidebar-nav">
     <div class="nav-section-label">Main</div>
 
@@ -42,6 +44,7 @@
     {% endif %}
   </nav>
 
+  <!-- Footer identity and logout controls keep session context visible on shared workstations. -->
   <div class="sidebar-footer">
     <div class="sidebar-user">
       <div class="user-avatar">{{ (user_role_label|default('A'))[:1] }}</div>

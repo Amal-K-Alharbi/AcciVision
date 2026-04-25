@@ -1,5 +1,7 @@
+<!-- Standards mode keeps the responder dashboard stable across browsers during time-sensitive work. -->
 <!DOCTYPE html>
 <html lang="en">
+<!-- Shared metadata and stylesheet loading preserve a consistent operator experience between roles. -->
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
@@ -9,10 +11,12 @@
 <body>
 <div class="app-shell">
 
+  <!-- The shared shell keeps navigation and badge counts available while responder-specific content changes inside the page body. -->
   {% include 'sidebar.html' %}
 
   <div class="main">
 
+    <!-- The top bar reinforces responder context and dispatch readiness without distracting from active cases. -->
     <div class="topbar">
       <div class="topbar-left">
         <span class="topbar-title">Responder Dashboard</span>
@@ -25,9 +29,12 @@
       </div>
     </div>
 
+    <!-- Main content is intentionally limited to dispatched alerts so responders work only from admin-approved incidents. -->
     <div class="page-content">
 
+      <!-- Template-side filtering narrows the queue to actionable dispatched records before any responder UI is rendered. -->
       {% set active_accidents = accidents | rejectattr('closed') | selectattr('notified') | list %}
+      <!-- Priority messaging appears only when there is live responder work pending. -->
       {% if active_accidents|length > 0 %}
       <div class="em-banner">
         <div class="em-left">
@@ -40,6 +47,7 @@
       </div>
       {% endif %}
 
+      <!-- The empty state confirms that responder workload is driven by admin dispatch rather than raw detections. -->
       {% if active_accidents|length == 0 %}
       <div class="empty-state">
         <div class="empty-icon">O</div>
@@ -47,7 +55,9 @@
         <p>Alerts will appear here after an admin contacts the authorities.</p>
       </div>
       {% else %}
+      <!-- Incident cards mirror the admin design language while exposing responder-specific transitions. -->
       <div class="alerts-list">
+        <!-- Each responder card stays tied to one incident record so acknowledgement and closure remain auditable. -->
         {% for acc in active_accidents %}
         <div class="alert-card {% if loop.first and not acc.responded %}is-critical{% elif loop.index == 2 and not acc.responded %}is-high{% endif %} fade-in" id="incident-{{ acc.id }}">
           <div class="alert-thumb">
@@ -95,6 +105,7 @@
               </div>
             </div>
 
+            <!-- Footer actions preserve the two-step lifecycle needed for response and closure timing metrics. -->
             <div class="alert-footer">
               {% if acc.notified %}
               <span class="dispatch-tag ok">
@@ -148,11 +159,13 @@
 
 </div>
 
+<!-- Toast messaging confirms queue updates without interrupting the responder workflow. -->
 <div id="toast" class="toast">
   <svg width="16" height="16" fill="none" stroke="currentColor" stroke-width="2.5" viewBox="0 0 24 24"><polyline points="20 6 9 17 4 12"/></svg>
   <span id="toastMsg"></span>
 </div>
 
+<!-- Front-end helpers update the queue immediately after backend transitions to keep operational state trustworthy. -->
 <script>
 function showToast(msg) {
   const t = document.getElementById('toast');

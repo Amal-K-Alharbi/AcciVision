@@ -1,5 +1,7 @@
+<!-- Standards mode keeps the admin alert page rendering predictably across browsers. -->
 <!DOCTYPE html>
 <html lang="en">
+<!-- Shared metadata and styling align this operational screen with the rest of the authenticated interface. -->
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
@@ -9,10 +11,12 @@
 <body>
 <div class="app-shell">
 
+  <!-- Shared navigation keeps alert triage connected to dashboard-wide metrics and routes. -->
   {% include 'sidebar.html' %}
 
   <div class="main">
 
+    <!-- The top bar anchors page identity and exposes monitoring state without interrupting triage flow. -->
     <div class="topbar">
       <div class="topbar-left">
         <span class="topbar-title">Alert Management</span>
@@ -25,8 +29,10 @@
       </div>
     </div>
 
+    <!-- Main content swaps between empty, review, and active-response states based on live backend data. -->
     <div class="page-content">
 
+      <!-- Emergency emphasis only appears when there is active workload requiring operator attention. -->
       {% if accidents|length > 0 %}
       <div class="em-banner">
         <div class="em-left">
@@ -40,6 +46,7 @@
       </div>
       {% endif %}
 
+      <!-- The empty state avoids a blank admin screen and points operators back toward detection when no incidents exist. -->
       {% if accidents|length == 0 %}
       <div class="empty-state">
         <div class="empty-icon">O</div>
@@ -50,9 +57,12 @@
         {% endif %}
       </div>
       {% else %}
+      <!-- Alert cards are rendered from persisted records so page refreshes preserve the current operational queue. -->
       <div class="alerts-list">
+        <!-- Each card binds one stored incident to its own visual context and server-backed action controls. -->
         {% for acc in accidents %}
         <div class="alert-card {% if loop.first and acc.status == 'New' %}is-critical{% elif loop.index == 2 and acc.status == 'New' %}is-high{% endif %} fade-in" id="incident-{{ acc.id }}">
+          <!-- Evidence imagery provides immediate visual context before an admin decides whether to escalate or dismiss. -->
           <div class="alert-thumb">
             <img src="{{ url_for('static', filename='accidents/' + acc.image) }}" alt="Accident">
             <div class="alert-thumb-overlay">
@@ -61,6 +71,7 @@
             </div>
           </div>
 
+          <!-- Card details combine severity, timing, narrative text, and actions in one review surface. -->
           <div class="alert-body">
             <div class="alert-top">
               <div class="alert-head-left">
@@ -103,6 +114,7 @@
               </div>
             </div>
 
+            <!-- Footer controls expose the alert lifecycle transitions that update both dashboards and database state. -->
             <div class="alert-footer">
               {% if acc.status == 'Responded' %}
               <span class="dispatch-tag ok" id="incident-status-tag-{{ acc.id }}">
@@ -164,11 +176,13 @@
 
 </div>
 
+<!-- Toast feedback confirms asynchronous actions without forcing navigation away from the alert list. -->
 <div id="toast" class="toast">
   <svg width="16" height="16" fill="none" stroke="currentColor" stroke-width="2.5" viewBox="0 0 24 24"><polyline points="20 6 9 17 4 12"/></svg>
   <span id="toastMsg"></span>
 </div>
 
+<!-- Client helpers keep the card state synchronized with backend transitions after admin actions complete. -->
 <script>
 function showToast(msg) {
   const t = document.getElementById('toast');

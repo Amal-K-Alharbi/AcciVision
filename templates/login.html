@@ -1,11 +1,14 @@
+<!-- Standards mode keeps the public authentication screen rendering predictably across browsers. -->
 <!DOCTYPE html>
 <html lang="en">
+<!-- Metadata and shared styling keep the sign-in and sign-up experience usable across device sizes. -->
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
   <title>Login — AcciVision</title>
   <link rel="stylesheet" href="{{ url_for('static', filename='css/style.css') }}">
 </head>
+<!-- The login page intentionally stays outside the dashboard shell to separate public access from protected operations. -->
 <body>
 
 <div class="auth-page">
@@ -26,7 +29,6 @@
     <div class="msg msg-success show">{{ success }}</div>
     {% endif %}
 
-    <!-- Login Form -->
     <div id="loginForm" class="auth-form-wrap">
       <h2>Welcome Back</h2>
       <p class="auth-subtitle">Sign in to access the detection system</p>
@@ -47,7 +49,6 @@
       <p class="auth-switch">Don't have an account? <a href="#" onclick="toggleForm('signup')">Sign Up</a></p>
     </div>
 
-    <!-- Signup Form -->
     <div id="signupForm" class="auth-form-wrap hidden">
       <h2>Create Account</h2>
       <p class="auth-subtitle">Register to start using AcciVision</p>
@@ -82,6 +83,7 @@
   </div>
 </div>
 
+<!-- Lightweight client behavior improves the authentication flow without moving trust decisions out of the backend. -->
 <script>
 function toggleForm(f) {
   document.getElementById('loginForm').classList.toggle('hidden', f === 'signup');
