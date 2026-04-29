@@ -51,10 +51,10 @@
         <div class="stat-card fade-in fade-in-2">
           <div>
             <div class="stat-label">Cameras Online</div>
-            <div class="stat-value blue">{{ cameras_online_count }}/{{ cameras_total_count }}</div>
+            <div class="stat-value blue">{{ cameras_online_count }}/165</div>
             <div class="stat-sub">
               <svg width="10" height="10" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24"><circle cx="12" cy="12" r="10"/><polyline points="12 6 12 12 16 14"/></svg>
-              Operational status
+              Active and reachable devices
             </div>
           </div>
           <div class="stat-icon" style="background:rgba(77,163,247,0.1); color:var(--blue-text);">
@@ -84,7 +84,7 @@
           <div>
             <div class="stat-label">Avg Response Time</div>
             <div class="stat-value amber" style="font-size:1.15rem;">{{ avg_response_time_label }}</div>
-            <div class="stat-sub neutral">Current dashboard role: {{ user_role_label }}</div>
+            <div class="stat-sub neutral">Average model detection time</div>
           </div>
           <div class="stat-icon" style="background:var(--amber-bg); color:var(--amber);">
             <svg width="18" height="18" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24">

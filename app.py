@@ -54,12 +54,21 @@ current_video_path = None
 video_active = False
 accident_flag = False          # polled by browser for sound
 accident_flag_lock = threading.Lock()
+camera_inventory_cache = {'count': 0, 'checked_at': 0.0}
+camera_inventory_lock = threading.Lock()
 
 # Snapshot throttling prevents one sustained incident from generating excessive duplicate evidence.
 last_snapshot_time = 0
 
 # Encoding settings are fixed up front to keep frame streaming predictable under repeated load.
 ENCODE_PARAM = [int(cv2.IMWRITE_JPEG_QUALITY), 60]
+
+# High-confidence detections bypass manual review so clear incidents reach responders immediately.
+AUTO_REPORT_CONFIDENCE_THRESHOLD = 0.80
+FRAME_SKIP_INTERVAL = 2
+MODEL_INPUT_SIZE = 640
+CAMERA_DISCOVERY_MAX_INDEX = 4
+CAMERA_DISCOVERY_CACHE_SECONDS = 15
 
 
 
@@ -113,6 +122,8 @@ def init_db():
         conn.execute("ALTER TABLE accidents ADD COLUMN responded_at REAL")
     if 'closed_at' not in accident_columns:
         conn.execute("ALTER TABLE accidents ADD COLUMN closed_at REAL")
+    if 'detection_time_seconds' not in accident_columns:
+        conn.execute("ALTER TABLE accidents ADD COLUMN detection_time_seconds REAL")
 
     conn.execute(
         '''
@@ -201,22 +212,21 @@ def get_alert_counts(conn=None):
     }
 
 
-# Response metrics are derived centrally so dashboard reporting and incident detail views share the same timing rules.
+# Detection-time metrics are derived centrally so dashboard reporting reflects model responsiveness rather than human workflow timing.
 def get_average_response_time(conn=None):
     should_close = conn is None
     if conn is None:
         conn = get_db()
 
-    # Only records with valid timing pairs contribute to performance metrics, keeping averages operationally meaningful.
+    # Only captured detections with measured inference duration contribute to the performance summary.
     stats = conn.execute(
         '''
         SELECT
-            COUNT(*) AS responded_total,
-            AVG(responded_at - COALESCE(sent_at, reported_at)) AS average_response_seconds
+            COUNT(*) AS detected_total,
+            AVG(detection_time_seconds) AS average_response_seconds
         FROM accidents
-        WHERE COALESCE(sent_at, reported_at) IS NOT NULL
-          AND responded_at IS NOT NULL
-          AND responded_at >= COALESCE(sent_at, reported_at)
+        WHERE detection_time_seconds IS NOT NULL
+          AND detection_time_seconds >= 0
         '''
     ).fetchone()
 
@@ -350,6 +360,7 @@ def build_dashboard_context():
     alert_counts = get_alert_counts(conn)
     response_metrics = get_average_response_time(conn)
     recent_events = build_recent_events(conn)
+    working_camera_count = get_working_camera_count()
     events_today_count = conn.execute(
         '''
         SELECT COUNT(*) AS total
@@ -364,8 +375,8 @@ def build_dashboard_context():
     return {
         **alert_counts,
         **response_metrics,
-        'cameras_online_count': 124,
-        'cameras_total_count': 128,
+        'cameras_online_count': working_camera_count,
+        'cameras_total_count': working_camera_count,
         'events_today_count': events_today_count,
         'recent_events': recent_events,
         'current_role': role,
@@ -466,6 +477,40 @@ def format_duration(seconds):
     if minutes > 0:
         return f"{minutes} min {remaining_seconds} sec"
     return f"{remaining_seconds} sec"
+
+
+# Camera probing is isolated so dashboard device counts and live capture can share the same platform-aware opening strategy.
+def open_camera_capture(index):
+    if os.name == 'nt':
+        return cv2.VideoCapture(index, cv2.CAP_DSHOW)
+    return cv2.VideoCapture(index)
+
+
+# Dashboard device metrics are cached briefly to avoid repeated hardware probing on every render.
+def get_working_camera_count():
+    now = time.time()
+    with camera_inventory_lock:
+        if now - camera_inventory_cache['checked_at'] < CAMERA_DISCOVERY_CACHE_SECONDS:
+            return camera_inventory_cache['count']
+
+    available_count = 0
+    for camera_index in range(CAMERA_DISCOVERY_MAX_INDEX):
+        cap = open_camera_capture(camera_index)
+        try:
+            if not cap.isOpened():
+                continue
+            cap.set(cv2.CAP_PROP_BUFFERSIZE, 1)
+            ok, _ = cap.read()
+            if ok:
+                available_count += 1
+        finally:
+            cap.release()
+
+    with camera_inventory_lock:
+        camera_inventory_cache['count'] = available_count
+        camera_inventory_cache['checked_at'] = now
+
+    return available_count
 
 
 # Single-record retrieval is centralized because most alert transitions start from the same lookup step.
@@ -655,18 +700,32 @@ def close_alert_by_id(accident_id):
 
 
 # Snapshot persistence runs off the streaming path because evidence capture should not block live detection output.
-def save_snapshot_background(frame_copy):
+def save_snapshot_background(frame_copy, auto_send_to_responder=False, detection_time_seconds=None):
     """Save accident snapshot in a background thread — never blocks video."""
     accident_id = str(uuid.uuid4())[:8]
     filename = f"accident_{accident_id}.jpg"
     filepath = os.path.join(ACCIDENTS_DIR, filename)
+    captured_at = time.time()
 
     cv2.imwrite(filepath, frame_copy, [int(cv2.IMWRITE_JPEG_QUALITY), 85])
 
     conn = get_db()
     conn.execute(
-        'INSERT INTO accidents (id, image, timestamp, notified, status) VALUES (?, ?, ?, 0, ?)',
-        (accident_id, filename, time.time(), 'new')
+        '''
+        INSERT INTO accidents (
+            id, image, timestamp, notified, status, sent_at, reported_at, detection_time_seconds
+        ) VALUES (?, ?, ?, ?, ?, ?, ?, ?)
+        ''',
+        (
+            accident_id,
+            filename,
+            captured_at,
+            1 if auto_send_to_responder else 0,
+            'sent_to_responder' if auto_send_to_responder else 'new',
+            captured_at if auto_send_to_responder else None,
+            captured_at if auto_send_to_responder else None,
+            detection_time_seconds,
+        )
     )
     conn.commit()
     conn.close()
@@ -679,11 +738,14 @@ def process_frame(frame):
     global accident_flag
 
     frame = cv2.resize(frame, (1020, 500))
+    inference_started_at = time.perf_counter()
 
-    results = model.predict(frame, verbose=False)
+    results = model.predict(frame, verbose=False, imgsz=MODEL_INPUT_SIZE)
+    detection_time_seconds = time.perf_counter() - inference_started_at
 
     boxes = results[0].boxes
     accident_detected = False
+    max_accident_confidence = 0.0
 
     if boxes is not None and len(boxes) > 0:
         data = boxes.data.cpu().numpy()
@@ -697,6 +759,7 @@ def process_frame(frame):
 
             if label == "accident":
                 accident_detected = True
+                max_accident_confidence = max(max_accident_confidence, float(conf))
                 cv2.rectangle(frame, (x1, y1), (x2, y2), (0, 0, 255), 4)
                 cv2.putText(frame, f"ACCIDENT {conf:.0%}", (x1, y1 - 12),
                             cv2.FONT_HERSHEY_SIMPLEX, 0.8, (0, 0, 255), 2, cv2.LINE_AA)
@@ -725,18 +788,23 @@ def process_frame(frame):
         with accident_flag_lock:
             accident_flag = True
 
-    return frame, accident_detected
+    auto_send_to_responder = accident_detected and max_accident_confidence >= AUTO_REPORT_CONFIDENCE_THRESHOLD
+    return frame, accident_detected, auto_send_to_responder, detection_time_seconds
 
 
 # Snapshot gating balances evidence retention against storage noise during sustained detections.
-def try_save_snapshot(frame):
+def try_save_snapshot(frame, auto_send_to_responder=False, detection_time_seconds=None):
     """Try to save a snapshot — only once per 30s, in background thread."""
     global last_snapshot_time
     now = time.time()
     if now - last_snapshot_time >= 30:
         last_snapshot_time = now
         snapshot = frame.copy()
-        threading.Thread(target=save_snapshot_background, args=(snapshot,), daemon=True).start()
+        threading.Thread(
+            target=save_snapshot_background,
+            args=(snapshot, auto_send_to_responder, detection_time_seconds),
+            daemon=True
+        ).start()
 
 
 # Uploaded footage shares the same detection pipeline as live input so operator expectations stay consistent across sources.
@@ -748,6 +816,7 @@ def generate_video_frames():
         return
 
     cap = cv2.VideoCapture(current_video_path)
+    cap.set(cv2.CAP_PROP_BUFFERSIZE, 1)
     video_active = True
     frame_count = 0
 
@@ -760,14 +829,14 @@ def generate_video_frames():
                 break
 
         frame_count += 1
-        if frame_count % 2 != 0:
+        if frame_count % FRAME_SKIP_INTERVAL != 0:
             continue
 
-        processed, detected = process_frame(frame)
+        processed, detected, auto_send_to_responder, detection_time_seconds = process_frame(frame)
 
        
         if detected:
-            try_save_snapshot(processed)
+            try_save_snapshot(processed, auto_send_to_responder, detection_time_seconds)
 
         _, buffer = cv2.imencode('.jpg', processed, ENCODE_PARAM)
         yield (b'--frame\r\n'
@@ -782,12 +851,13 @@ def generate_camera_frames():
     """Generator for live camera streaming — OPTIMIZED."""
     global camera_active
 
-    cap = cv2.VideoCapture(0)
+    cap = open_camera_capture(0)
     if not cap.isOpened():
         return
 
     cap.set(cv2.CAP_PROP_FRAME_WIDTH, 640)
     cap.set(cv2.CAP_PROP_FRAME_HEIGHT, 480)
+    cap.set(cv2.CAP_PROP_BUFFERSIZE, 1)
 
     camera_active = True
     frame_count = 0
@@ -798,14 +868,14 @@ def generate_camera_frames():
             break
 
         frame_count += 1
-        if frame_count % 2 != 0:
+        if frame_count % FRAME_SKIP_INTERVAL != 0:
             continue
 
-        processed, detected = process_frame(frame)
+        processed, detected, auto_send_to_responder, detection_time_seconds = process_frame(frame)
 
         
         if detected:
-            try_save_snapshot(processed)
+            try_save_snapshot(processed, auto_send_to_responder, detection_time_seconds)
 
         _, buffer = cv2.imencode('.jpg', processed, ENCODE_PARAM)
         yield (b'--frame\r\n'
@@ -1090,10 +1160,10 @@ def process_camera_frame():
         return jsonify({'success': False, 'error': 'Unable to decode frame'}), 400
 
     try:
-        processed, detected = process_frame(frame)
+        processed, detected, auto_send_to_responder, detection_time_seconds = process_frame(frame)
 
         if detected:
-            try_save_snapshot(processed)
+            try_save_snapshot(processed, auto_send_to_responder, detection_time_seconds)
 
         ok, buffer = cv2.imencode('.jpg', processed, ENCODE_PARAM)
         if not ok:

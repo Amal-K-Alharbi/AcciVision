@@ -34,15 +34,26 @@
       <div id="msgSuccess" class="msg msg-success"></div>
 
       <div id="uploadZone" class="upload-zone" style="margin-bottom:1rem;">
-        <div class="upload-icon">UP</div>
-        <h3>Drop your video here or click to browse</h3>
+        <div class="upload-icon">
+          <svg width="28" height="28" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24" aria-hidden="true">
+            <path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/>
+            <polyline points="17 8 12 3 7 8"/>
+            <line x1="12" y1="3" x2="12" y2="15"/>
+          </svg>
+        </div>
+        <h3>File Upload Detection</h3>
         <p>Supports MP4, AVI, MOV, MKV, WMV, WebM - Max 200 MB</p>
         <input type="file" id="videoInput" accept=".mp4,.avi,.mov,.mkv,.wmv,.webm">
       </div>
 
       <div id="cameraZone" class="upload-zone" style="margin-bottom:1rem; cursor:default;">
-        <div class="upload-icon">CAM</div>
-        <h3>Live Detection With Device Camera</h3>
+        <div class="upload-icon">
+          <svg width="28" height="28" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24" aria-hidden="true">
+            <path d="M23 7l-7 5 7 5V7z"/>
+            <rect x="1" y="5" width="15" height="14" rx="2" ry="2"/>
+          </svg>
+        </div>
+        <h3>Camera Detection</h3>
         <p>Open this device camera in the browser and run live accident detection without uploading a file.</p>
         <button type="button" class="btn btn-primary" onclick="startLiveDetection()">Open Camera</button>
       </div>
@@ -150,6 +161,9 @@ let videoFrameCount = 0;
 let cameraFrameCount = 0;
 let cameraStream = null;
 let cameraProcessingInterval = null;
+let cameraProcessingActive = false;
+const CAMERA_CAPTURE_INTERVAL_MS = 250;
+const CAMERA_JPEG_QUALITY = 0.8;
 
 const msgError = document.getElementById('msgError');
 const msgSuccess = document.getElementById('msgSuccess');
@@ -193,6 +207,48 @@ function logDetection(msg, targetEl) {
   const entry = document.createElement('div');
   entry.textContent = '[' + new Date().toLocaleTimeString() + '] ' + msg;
   targetEl.prepend(entry);
+}
+
+function captureCameraBlob() {
+  return new Promise((resolve) => {
+    cameraCanvas.toBlob(resolve, 'image/jpeg', CAMERA_JPEG_QUALITY);
+  });
+}
+
+async function processCameraFrameLoop() {
+  if (!cameraStream || cameraProcessingActive) return;
+
+  cameraProcessingActive = true;
+  try {
+    cameraCanvas.width = cameraPreview.videoWidth || 640;
+    cameraCanvas.height = cameraPreview.videoHeight || 480;
+    const ctx = cameraCanvas.getContext('2d', { alpha: false });
+    ctx.drawImage(cameraPreview, 0, 0, cameraCanvas.width, cameraCanvas.height);
+
+    const frameBlob = await captureCameraBlob();
+    if (!frameBlob) return;
+
+    const formData = new FormData();
+    formData.append('frame', frameBlob, 'camera.jpg');
+
+    const response = await fetch('{{ url_for("process_camera_frame") }}', {
+      method: 'POST',
+      body: formData
+    });
+    const data = await response.json();
+    if (data.success) {
+      cameraFeed.src = data.image;
+      cameraFrameCount += 1;
+      cameraFrameCountEl.textContent = 'Frames: ' + cameraFrameCount;
+    }
+  } catch (err) {
+    console.error(err);
+  } finally {
+    cameraProcessingActive = false;
+    if (cameraStream) {
+      cameraProcessingInterval = setTimeout(processCameraFrameLoop, CAMERA_CAPTURE_INTERVAL_MS);
+    }
+  }
 }
 
 async function pollAccidentStatus() {
@@ -320,26 +376,7 @@ async function startLiveDetection() {
     resetLog(cameraDetectionLog, 'Waiting for live camera events...');
     ensurePolling();
 
-    cameraProcessingInterval = setInterval(async () => {
-      if (!cameraStream) return;
-      cameraCanvas.width = cameraPreview.videoWidth || 640;
-      cameraCanvas.height = cameraPreview.videoHeight || 480;
-      const ctx = cameraCanvas.getContext('2d');
-      ctx.drawImage(cameraPreview, 0, 0, cameraCanvas.width, cameraCanvas.height);
-      const dataUrl = cameraCanvas.toDataURL('image/jpeg', 0.8);
-
-      const response = await fetch('{{ url_for("process_camera_frame") }}', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ image: dataUrl })
-      });
-      const data = await response.json();
-      if (data.success) {
-        cameraFeed.src = 'data:image/jpeg;base64,' + data.image;
-        cameraFrameCount += 1;
-        cameraFrameCountEl.textContent = 'Frames: ' + cameraFrameCount;
-      }
-    }, 900);
+    processCameraFrameLoop();
 
     showMsg('success', 'Device camera opened for live detection.');
   } catch (error) {
@@ -350,9 +387,10 @@ async function startLiveDetection() {
 async function stopLiveDetection(showToast = true) {
   await fetch('{{ url_for("stop_camera") }}', { method: 'POST' });
   if (cameraProcessingInterval) {
-    clearInterval(cameraProcessingInterval);
+    clearTimeout(cameraProcessingInterval);
     cameraProcessingInterval = null;
   }
+  cameraProcessingActive = false;
   if (cameraStream) {
     cameraStream.getTracks().forEach((track) => track.stop());
     cameraStream = null;
