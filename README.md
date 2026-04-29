@@ -3,7 +3,7 @@
 ## Project Overview
 
 ### Purpose
-**AcciVision** is a real-time traffic accident detection and alert management system that uses computer vision to automatically identify accidents in video streams (from cameras or uploaded files) and orchestrate a response workflow for operators and responders.
+**AcciVision** is a real-time accident detection and alert management system that uses computer vision to automatically identify accidents in video streams (from cameras or uploaded files) and orchestrate a response workflow for operators and responders.
 
 ### Problem Solved
 - **Manual monitoring is inefficient**: Security personnel cannot watch multiple video feeds continuously.
@@ -230,7 +230,7 @@ CREATE TABLE accidents (
 
 ## Summary
 
-AcciVision is a well-architected accident detection system that:
+AcciVision is an accident detection system that:
 
 1. **Detects** accidents in real time using YOLOv8
 2. **Captures** evidence automatically with throttled snapshots
