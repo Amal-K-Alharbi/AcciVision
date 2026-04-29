@@ -1214,5 +1214,10 @@ def accident_status():
 
 # Direct execution support keeps local development straightforward without affecting production deployment patterns.
 if __name__ == '__main__':
-    app.run(debug=True, host='0.0.0.0', port=5000,
-            use_reloader=False, threaded=True)
+    app.run(
+        debug=True,
+        host='0.0.0.0',
+        port=int(os.environ.get("PORT", 10000)),
+        use_reloader=False,
+        threaded=True
+    )
