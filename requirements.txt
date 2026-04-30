@@ -4,3 +4,6 @@ opencv-python-headless>=4.6.0
 pandas
 ultralytics
 numpy
+werkzeug
+gunicorn
+opencv-python
