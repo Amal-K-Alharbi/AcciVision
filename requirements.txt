@@ -1,5 +1,6 @@
 flask
-opencv-python
+flask-sock
+opencv-python-headless>=4.6.0
 pandas
 ultralytics
 numpy

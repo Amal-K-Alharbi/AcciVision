@@ -4,6 +4,7 @@ import cv2
 import time
 import uuid
 import base64
+import json
 import sqlite3
 import hashlib
 import threading
@@ -13,11 +14,13 @@ from flask import (
     Flask, render_template, request, Response,
     jsonify, session, redirect, url_for
 )
+from flask_sock import Sock
 from ultralytics import YOLO
 from werkzeug.utils import secure_filename
 
 # The application object centralizes configuration, routing, and request handling for the entire system.
 app = Flask(__name__)
+sock = Sock(app)
 # Session signing depends on a stable secret so authenticated state cannot be tampered with by the client.
 app.secret_key = 'accivision_secret_key_2024'
 # Uploaded media stays inside the project workspace to keep evidence and operator input under managed storage.
@@ -49,13 +52,10 @@ with open(LABELS_PATH, 'r') as f:
     class_list = [line.strip() for line in f.read().strip().split('\n')]
 
 # Shared runtime flags coordinate long-lived streaming loops and browser polling across multiple request handlers.
-camera_active = False
 current_video_path = None
 video_active = False
 accident_flag = False          # polled by browser for sound
 accident_flag_lock = threading.Lock()
-camera_inventory_cache = {'count': 0, 'checked_at': 0.0}
-camera_inventory_lock = threading.Lock()
 
 # Snapshot throttling prevents one sustained incident from generating excessive duplicate evidence.
 last_snapshot_time = 0
@@ -67,8 +67,10 @@ ENCODE_PARAM = [int(cv2.IMWRITE_JPEG_QUALITY), 60]
 AUTO_REPORT_CONFIDENCE_THRESHOLD = 0.80
 FRAME_SKIP_INTERVAL = 2
 MODEL_INPUT_SIZE = 640
-CAMERA_DISCOVERY_MAX_INDEX = 4
-CAMERA_DISCOVERY_CACHE_SECONDS = 15
+REALTIME_STREAM_INPUT_SIZE = (640, 360)
+REALTIME_ALERT_COOLDOWN_SECONDS = 4
+realtime_alert_state = {}
+realtime_alert_lock = threading.Lock()
 
 
 
@@ -360,7 +362,7 @@ def build_dashboard_context():
     alert_counts = get_alert_counts(conn)
     response_metrics = get_average_response_time(conn)
     recent_events = build_recent_events(conn)
-    working_camera_count = get_working_camera_count()
+    working_camera_count = get_reported_camera_count()
     events_today_count = conn.execute(
         '''
         SELECT COUNT(*) AS total
@@ -479,38 +481,69 @@ def format_duration(seconds):
     return f"{remaining_seconds} sec"
 
 
-# Camera probing is isolated so dashboard device counts and live capture can share the same platform-aware opening strategy.
-def open_camera_capture(index):
-    if os.name == 'nt':
-        return cv2.VideoCapture(index, cv2.CAP_DSHOW)
-    return cv2.VideoCapture(index)
+# Stream-scoped alert cooldowns prevent one sustained event from flooding the UI and responder pipeline.
+def should_trigger_realtime_alert(stream_id, detected):
+    if not detected:
+        return False
 
-
-# Dashboard device metrics are cached briefly to avoid repeated hardware probing on every render.
-def get_working_camera_count():
+    normalized_stream_id = stream_id or 'default'
     now = time.time()
-    with camera_inventory_lock:
-        if now - camera_inventory_cache['checked_at'] < CAMERA_DISCOVERY_CACHE_SECONDS:
-            return camera_inventory_cache['count']
+    with realtime_alert_lock:
+        last_triggered_at = realtime_alert_state.get(normalized_stream_id, 0.0)
+        if now - last_triggered_at < REALTIME_ALERT_COOLDOWN_SECONDS:
+            return False
+        realtime_alert_state[normalized_stream_id] = now
+        return True
 
-    available_count = 0
-    for camera_index in range(CAMERA_DISCOVERY_MAX_INDEX):
-        cap = open_camera_capture(camera_index)
-        try:
-            if not cap.isOpened():
-                continue
-            cap.set(cv2.CAP_PROP_BUFFERSIZE, 1)
-            ok, _ = cap.read()
-            if ok:
-                available_count += 1
-        finally:
-            cap.release()
 
-    with camera_inventory_lock:
-        camera_inventory_cache['count'] = available_count
-        camera_inventory_cache['checked_at'] = now
+# Stream cleanup prevents stale cooldown state from leaking across browser reconnects.
+def clear_realtime_alert_state(stream_id):
+    normalized_stream_id = stream_id or 'default'
+    with realtime_alert_lock:
+        realtime_alert_state.pop(normalized_stream_id, None)
 
-    return available_count
+
+# Binary image decoding is centralized so HTTP uploads and WebSocket frames share the same validation path.
+def decode_image_bytes(image_bytes):
+    np_buffer = np.frombuffer(image_bytes, dtype=np.uint8)
+    return cv2.imdecode(np_buffer, cv2.IMREAD_COLOR)
+
+
+# Base64 frame decoding supports browser-streamed canvas payloads without server-side camera access.
+def decode_base64_frame(frame_data):
+    normalized_frame_data = frame_data.split(',', 1)[1] if ',' in frame_data else frame_data
+    image_bytes = base64.b64decode(normalized_frame_data)
+    return decode_image_bytes(image_bytes)
+
+
+# Detection result shaping is shared so every ingestion path returns the same contract to the frontend.
+def build_detection_result(frame, stream_id=None):
+    processed, detected, auto_send_to_responder, detection_time_seconds, prediction_result = process_frame(frame)
+
+    if detected:
+        try_save_snapshot(processed, auto_send_to_responder, detection_time_seconds)
+
+    ok, buffer = cv2.imencode('.jpg', processed, ENCODE_PARAM)
+    if not ok:
+        raise ValueError('Unable to encode frame')
+
+    alert_triggered = should_trigger_realtime_alert(stream_id, detected)
+    return {
+        'success': True,
+        'detected': detected,
+        'status': 'ACCIDENT' if detected else 'NORMAL',
+        'confidence': round(float(prediction_result['confidence']) * 100, 2),
+        'alert': alert_triggered,
+        'prediction': prediction_result,
+        'auto_sent_to_responder': auto_send_to_responder,
+        'detection_time_ms': round(detection_time_seconds * 1000, 2),
+        'image': f"data:image/jpeg;base64,{base64.b64encode(buffer.tobytes()).decode('ascii')}",
+    }
+
+
+# Browser-reported device counts keep deployment compatible with hosted environments where the server cannot access user cameras.
+def get_reported_camera_count():
+    return max(int(session.get('browser_camera_count', 0) or 0), 0)
 
 
 # Single-record retrieval is centralized because most alert transitions start from the same lookup step.
@@ -746,6 +779,11 @@ def process_frame(frame):
     boxes = results[0].boxes
     accident_detected = False
     max_accident_confidence = 0.0
+    prediction_result = {
+        'label': 'no_accident',
+        'confidence': 0.0,
+        'message': 'No accident detected'
+    }
 
     if boxes is not None and len(boxes) > 0:
         data = boxes.data.cpu().numpy()
@@ -760,6 +798,11 @@ def process_frame(frame):
             if label == "accident":
                 accident_detected = True
                 max_accident_confidence = max(max_accident_confidence, float(conf))
+                prediction_result = {
+                    'label': 'accident',
+                    'confidence': float(max_accident_confidence),
+                    'message': f'Accident detected with {max_accident_confidence:.0%} confidence'
+                }
                 cv2.rectangle(frame, (x1, y1), (x2, y2), (0, 0, 255), 4)
                 cv2.putText(frame, f"ACCIDENT {conf:.0%}", (x1, y1 - 12),
                             cv2.FONT_HERSHEY_SIMPLEX, 0.8, (0, 0, 255), 2, cv2.LINE_AA)
@@ -789,7 +832,7 @@ def process_frame(frame):
             accident_flag = True
 
     auto_send_to_responder = accident_detected and max_accident_confidence >= AUTO_REPORT_CONFIDENCE_THRESHOLD
-    return frame, accident_detected, auto_send_to_responder, detection_time_seconds
+    return frame, accident_detected, auto_send_to_responder, detection_time_seconds, prediction_result
 
 
 # Snapshot gating balances evidence retention against storage noise during sustained detections.
@@ -805,86 +848,6 @@ def try_save_snapshot(frame, auto_send_to_responder=False, detection_time_second
             args=(snapshot, auto_send_to_responder, detection_time_seconds),
             daemon=True
         ).start()
-
-
-# Uploaded footage shares the same detection pipeline as live input so operator expectations stay consistent across sources.
-def generate_video_frames():
-    """Generator for uploaded video streaming — OPTIMIZED."""
-    global current_video_path, video_active
-
-    if not current_video_path or not os.path.exists(current_video_path):
-        return
-
-    cap = cv2.VideoCapture(current_video_path)
-    cap.set(cv2.CAP_PROP_BUFFERSIZE, 1)
-    video_active = True
-    frame_count = 0
-
-    while video_active:
-        ret, frame = cap.read()
-        if not ret:
-            cap.set(cv2.CAP_PROP_POS_FRAMES, 0)
-            ret, frame = cap.read()
-            if not ret:
-                break
-
-        frame_count += 1
-        if frame_count % FRAME_SKIP_INTERVAL != 0:
-            continue
-
-        processed, detected, auto_send_to_responder, detection_time_seconds = process_frame(frame)
-
-       
-        if detected:
-            try_save_snapshot(processed, auto_send_to_responder, detection_time_seconds)
-
-        _, buffer = cv2.imencode('.jpg', processed, ENCODE_PARAM)
-        yield (b'--frame\r\n'
-               b'Content-Type: image/jpeg\r\n\r\n' + buffer.tobytes() + b'\r\n')
-
-    cap.release()
-    video_active = False
-
-
-# Camera streaming is separated from uploaded playback because device access and lifecycle rules differ.
-def generate_camera_frames():
-    """Generator for live camera streaming — OPTIMIZED."""
-    global camera_active
-
-    cap = open_camera_capture(0)
-    if not cap.isOpened():
-        return
-
-    cap.set(cv2.CAP_PROP_FRAME_WIDTH, 640)
-    cap.set(cv2.CAP_PROP_FRAME_HEIGHT, 480)
-    cap.set(cv2.CAP_PROP_BUFFERSIZE, 1)
-
-    camera_active = True
-    frame_count = 0
-
-    while camera_active:
-        ret, frame = cap.read()
-        if not ret:
-            break
-
-        frame_count += 1
-        if frame_count % FRAME_SKIP_INTERVAL != 0:
-            continue
-
-        processed, detected, auto_send_to_responder, detection_time_seconds = process_frame(frame)
-
-        
-        if detected:
-            try_save_snapshot(processed, auto_send_to_responder, detection_time_seconds)
-
-        _, buffer = cv2.imencode('.jpg', processed, ENCODE_PARAM)
-        yield (b'--frame\r\n'
-               b'Content-Type: image/jpeg\r\n\r\n' + buffer.tobytes() + b'\r\n')
-
-    cap.release()
-    camera_active = False
-
-
 
 
 # Authentication routes combine sign-in and sign-up because this deployment keeps onboarding lightweight and local.
@@ -1110,33 +1073,14 @@ def upload_video():
 
     return jsonify({'success': True, 'filename': filename})
 
-
-# Multipart streaming routes keep the browser preview simple without introducing websocket infrastructure.
-@app.route('/video_feed')
-@admin_required
-# Uploaded video frames are served incrementally so processed output appears in near real time.
-def video_feed():
-    return Response(generate_video_frames(),
-                    mimetype='multipart/x-mixed-replace; boundary=frame')
-
-
-# Live camera streaming has its own route because device-backed capture has distinct lifecycle and failure behavior.
-@app.route('/camera_feed')
-@admin_required
-# Camera streaming mirrors the uploaded-feed contract to simplify front-end integration.
-def camera_feed():
-    return Response(generate_camera_frames(),
-                    mimetype='multipart/x-mixed-replace; boundary=frame')
-
-
-# Snapshot-based camera processing supports browsers that submit individual frames instead of consuming a continuous stream.
+# Snapshot-based camera processing supports browsers that submit captured frames from their own device camera.
+@app.route('/upload_frame', methods=['POST'])
+@app.route('/auto_upload_frame', methods=['POST'])
 @app.route('/process_camera_frame', methods=['POST'])
 @admin_required
-# This endpoint decodes incoming image payloads, runs inference, and returns an annotated preview frame.
+# This endpoint decodes browser-captured frames, runs inference, and returns an annotated preview plus prediction details.
 def process_camera_frame():
     try:
-        frame = None
-
         if 'frame' in request.files:
             image_bytes = request.files['frame'].read()
         else:
@@ -1146,13 +1090,10 @@ def process_camera_frame():
             if not frame_data:
                 return jsonify({'success': False, 'error': 'No frame provided'}), 400
 
-            if ',' in frame_data:
-                frame_data = frame_data.split(',', 1)[1]
-
-            image_bytes = base64.b64decode(frame_data)
-
-        np_buffer = np.frombuffer(image_bytes, dtype=np.uint8)
-        frame = cv2.imdecode(np_buffer, cv2.IMREAD_COLOR)
+            frame = decode_base64_frame(frame_data)
+            image_bytes = None
+        if image_bytes is not None:
+            frame = decode_image_bytes(image_bytes)
     except Exception:
         return jsonify({'success': False, 'error': 'Invalid frame data'}), 400
 
@@ -1160,42 +1101,108 @@ def process_camera_frame():
         return jsonify({'success': False, 'error': 'Unable to decode frame'}), 400
 
     try:
-        processed, detected, auto_send_to_responder, detection_time_seconds = process_frame(frame)
-
-        if detected:
-            try_save_snapshot(processed, auto_send_to_responder, detection_time_seconds)
-
-        ok, buffer = cv2.imencode('.jpg', processed, ENCODE_PARAM)
-        if not ok:
-            return jsonify({'success': False, 'error': 'Unable to encode frame'}), 500
-
-        encoded = base64.b64encode(buffer.tobytes()).decode('ascii')
-        return jsonify({
-            'success': True,
-            'detected': detected,
-            'image': f'data:image/jpeg;base64,{encoded}'
-        })
+        return jsonify(build_detection_result(frame, request.headers.get('X-Stream-Id')))
     except Exception as exc:
         return jsonify({'success': False, 'error': f'Camera processing failed: {exc}'}), 500
+
+
+# WebSocket streaming keeps inference conversational and low-latency instead of repeating full HTTP setup for every frame.
+@sock.route('/ws/realtime_detect')
+def realtime_detect_socket(ws):
+    if 'user_id' not in session or get_current_role() != 'admin':
+        ws.send(json.dumps({'success': False, 'error': 'Unauthorized'}))
+        ws.close()
+        return
+
+    stream_id = None
+    try:
+        while True:
+            raw_message = ws.receive()
+            if raw_message is None:
+                break
+
+            payload = json.loads(raw_message)
+            message_type = payload.get('type')
+
+            if message_type == 'start':
+                stream_id = payload.get('stream_id') or str(uuid.uuid4())
+                clear_realtime_alert_state(stream_id)
+                ws.send(json.dumps({'success': True, 'type': 'ready', 'stream_id': stream_id}))
+                continue
+
+            if message_type == 'stop':
+                break
+
+            if message_type != 'frame':
+                ws.send(json.dumps({'success': False, 'error': 'Unsupported message type'}))
+                continue
+
+            frame_data = payload.get('image')
+            if not frame_data:
+                ws.send(json.dumps({'success': False, 'error': 'No frame provided'}))
+                continue
+
+            frame = decode_base64_frame(frame_data)
+            if frame is None:
+                ws.send(json.dumps({'success': False, 'error': 'Unable to decode frame'}))
+                continue
+
+            detection_payload = build_detection_result(frame, stream_id or payload.get('stream_id'))
+            detection_payload['type'] = 'prediction'
+            detection_payload['stream_id'] = stream_id or payload.get('stream_id')
+            ws.send(json.dumps(detection_payload))
+    except Exception as exc:
+        try:
+            ws.send(json.dumps({'success': False, 'error': f'Stream closed: {exc}'}))
+        except Exception:
+            pass
+    finally:
+        clear_realtime_alert_state(stream_id)
+        try:
+            ws.close()
+        except Exception:
+            pass
 
 
 # Explicit stop routes let the UI terminate long-running stream generators without restarting the app.
 @app.route('/stop_video', methods=['POST'])
 @admin_required
-# Uploaded playback shutdown is exposed independently because its lifecycle is separate from live camera capture.
+# Uploaded video playback now runs in the browser, but this endpoint remains for frontend compatibility.
 def stop_video():
-    global video_active
-    video_active = False
     return jsonify({'success': True})
 
 
 @app.route('/stop_camera', methods=['POST'])
 @admin_required
-# Camera shutdown exists to release the device promptly when operators leave live mode.
+# Browser camera shutdown is handled client-side, but this endpoint remains for frontend compatibility.
 def stop_camera():
-    global camera_active
-    camera_active = False
     return jsonify({'success': True})
+
+
+# Browser-reported camera counts keep the dashboard compatible with hosted deployments where the server cannot inspect local hardware.
+@app.route('/report_camera_inventory', methods=['POST'])
+@login_required
+def report_camera_inventory():
+    data = request.get_json(silent=True) or {}
+    device_count = data.get('count', 0)
+    try:
+        session['browser_camera_count'] = max(int(device_count), 0)
+    except (TypeError, ValueError):
+        session['browser_camera_count'] = 0
+    return jsonify({'success': True, 'count': session['browser_camera_count']})
+
+
+# Frontend alert acknowledgements are logged separately so real-time UI behavior can be observed without altering incident records.
+@app.route('/log_alert', methods=['POST'])
+@admin_required
+def log_alert():
+    payload = request.get_json(silent=True) or {}
+    return jsonify({
+        'success': True,
+        'logged_at': time.time(),
+        'label': payload.get('label', 'unknown'),
+        'confidence': payload.get('confidence'),
+    })
 
 
 # Polling-based alert signaling keeps browser audio warnings decoupled from frame transport.

@@ -7,6 +7,17 @@
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
   <title>Test Model - AcciVision</title>
   <link rel="stylesheet" href="{{ url_for('static', filename='css/style.css') }}">
+  <style>
+    .realtime-alert-banner { display:none; margin-bottom:1rem; padding:0.95rem 1.1rem; border-radius:18px; border:1px solid rgba(255,83,83,0.55); background:rgba(255,83,83,0.16); color:#ffd7d7; font-weight:700; letter-spacing:0.06em; }
+    .realtime-alert-banner.show { display:block; animation: realtimePulse 0.9s linear infinite; }
+    .camera-preview-wrap { position:relative; }
+    .camera-state-pill { position:absolute; top:14px; left:14px; z-index:2; padding:0.45rem 0.8rem; border-radius:999px; background:rgba(15,19,30,0.78); border:1px solid rgba(255,255,255,0.08); color:var(--t1); font-size:0.74rem; font-family:var(--font-m); }
+    .camera-state-pill.alert { background:rgba(176,24,24,0.92); border-color:rgba(255,87,87,0.55); color:#fff0f0; }
+    @keyframes realtimePulse {
+      0% { box-shadow:0 0 0 0 rgba(255,83,83,0.36); }
+      100% { box-shadow:0 0 0 18px rgba(255,83,83,0); }
+    }
+  </style>
 </head>
 <body>
 <div class="app-shell">
@@ -32,6 +43,7 @@
     <div class="page-content">
       <div id="msgError" class="msg msg-error"></div>
       <div id="msgSuccess" class="msg msg-success"></div>
+      <div id="liveAlertBanner" class="realtime-alert-banner">ACCIDENT DETECTED - RESPOND IMMEDIATELY</div>
 
       <div id="uploadZone" class="upload-zone" style="margin-bottom:1rem;">
         <div class="upload-icon">
@@ -69,14 +81,15 @@
         <div class="video-grid">
           <div class="feed-panel">
             <div class="feed-header">
-              <span class="feed-label">Live Feed</span>
+              <span class="feed-label">Uploaded Video Preview</span>
               <div class="feed-live">
                 <span class="live-dot"></span>
                 <span id="videoStatus">Processing...</span>
               </div>
             </div>
             <div class="feed-body">
-              <img id="videoFeed" src="" alt="Detection Feed" style="width:100%; max-height:320px; object-fit:contain;">
+              <video id="videoPreview" autoplay muted playsinline controls style="width:100%; max-height:320px; object-fit:contain; background:var(--bg3); border-radius:16px;"></video>
+              <canvas id="videoCanvas" class="hidden"></canvas>
             </div>
             <div class="feed-footer">
               <button class="btn btn-danger btn-sm" onclick="stopVideo()">Stop</button>
@@ -87,10 +100,14 @@
 
           <div class="feed-panel">
             <div class="feed-header">
-              <span class="feed-label">Detection Log</span>
+              <span class="feed-label">Processed Result</span>
               <span style="font-size:0.65rem; color:var(--green);">Live</span>
             </div>
             <div class="feed-body" style="min-height:200px; padding:1rem; background:var(--bg3); display:block;">
+              <img id="videoFeed" src="" alt="Processed Detection Result" style="width:100%; max-height:180px; object-fit:contain; border-radius:16px; margin-bottom:1rem; background:rgba(255,255,255,0.02);">
+              <div id="videoPredictionResult" style="margin-bottom:1rem; font-family:var(--font-m); font-size:0.78rem; color:var(--t1);">
+                Prediction result will appear here after the uploaded video starts processing.
+              </div>
               <div id="detectionLog" style="font-family:var(--font-m); font-size:0.72rem; color:var(--t2); line-height:2;">
                 <div style="color:var(--t3);">Waiting for detection events...</div>
               </div>
@@ -107,15 +124,15 @@
         <div class="video-grid">
           <div class="feed-panel">
             <div class="feed-header">
-              <span class="feed-label">Device Camera Live Feed</span>
+              <span class="feed-label">Device Camera Preview</span>
               <div class="feed-live">
                 <span class="live-dot"></span>
                 <span id="cameraStatus">Camera idle</span>
               </div>
             </div>
-            <div class="feed-body">
-              <img id="cameraFeed" src="" alt="Live Camera Detection Feed" style="width:100%; max-height:320px; object-fit:contain;">
-              <video id="cameraPreview" autoplay muted playsinline class="hidden"></video>
+            <div class="feed-body camera-preview-wrap">
+              <div id="cameraStatePill" class="camera-state-pill">Normal</div>
+              <video id="cameraPreview" autoplay muted playsinline style="width:100%; max-height:320px; object-fit:contain; background:var(--bg3); border-radius:16px;"></video>
               <canvas id="cameraCanvas" class="hidden"></canvas>
             </div>
             <div class="feed-footer">
@@ -127,10 +144,14 @@
 
           <div class="feed-panel">
             <div class="feed-header">
-              <span class="feed-label">Live Detection Log</span>
+              <span class="feed-label">Prediction Result</span>
               <span style="font-size:0.65rem; color:var(--green);">Browser Camera</span>
             </div>
             <div class="feed-body" style="min-height:200px; padding:1rem; background:var(--bg3); display:block;">
+              <img id="cameraFeed" src="" alt="Processed Detection Result" style="width:100%; max-height:180px; object-fit:contain; border-radius:16px; margin-bottom:1rem; background:rgba(255,255,255,0.02);">
+              <div id="cameraPredictionResult" style="margin-bottom:1rem; font-family:var(--font-m); font-size:0.78rem; color:var(--t1);">
+                Prediction result will update automatically while live video analysis is running.
+              </div>
               <div id="cameraDetectionLog" style="font-family:var(--font-m); font-size:0.72rem; color:var(--t2); line-height:2;">
                 <div style="color:var(--t3);">Waiting for live camera events...</div>
               </div>
@@ -152,18 +173,29 @@
   <source src="{{ url_for('static', filename='assets/warning.mp3') }}" type="audio/mpeg">
 </audio>
 
-<!-- Browser-side logic coordinates uploads, streams, and polling because detection relies on interactive long-lived state. -->
+<!-- Browser-side logic combines local media access with low-latency transport so hosted deployments can analyze live camera video without server hardware access. -->
 <script>
-let soundPollingInterval = null;
-let soundCooldown = false;
 let activeSource = null;
 let videoFrameCount = 0;
 let cameraFrameCount = 0;
 let cameraStream = null;
-let cameraProcessingInterval = null;
-let cameraProcessingActive = false;
-const CAMERA_CAPTURE_INTERVAL_MS = 250;
-const CAMERA_JPEG_QUALITY = 0.8;
+let videoProcessingTimer = null;
+let videoProcessingActive = false;
+let cameraSocket = null;
+let cameraSocketReady = false;
+let cameraFrameInFlight = false;
+let cameraAnimationFrameId = null;
+let cameraLastSentAt = 0;
+let cameraStreamId = null;
+let lastCameraState = 'NORMAL';
+let alertBannerTimer = null;
+
+const CAMERA_JPEG_QUALITY = 0.72;
+const VIDEO_CAPTURE_INTERVAL_MS = 350;
+const CAMERA_STREAM_FPS = 8;
+const CAMERA_STREAM_INTERVAL_MS = 1000 / CAMERA_STREAM_FPS;
+const CAMERA_STREAM_WIDTH = 640;
+const CAMERA_STREAM_HEIGHT = 360;
 
 const msgError = document.getElementById('msgError');
 const msgSuccess = document.getElementById('msgSuccess');
@@ -174,18 +206,24 @@ const progressFill = document.getElementById('progressFill');
 const progressText = document.getElementById('progressText');
 const videoPanel = document.getElementById('videoPanel');
 const cameraPanel = document.getElementById('cameraPanel');
+const videoPreview = document.getElementById('videoPreview');
 const videoFeed = document.getElementById('videoFeed');
 const cameraFeed = document.getElementById('cameraFeed');
+const videoCanvas = document.getElementById('videoCanvas');
 const videoStatus = document.getElementById('videoStatus');
 const cameraStatus = document.getElementById('cameraStatus');
 const videoFilename = document.getElementById('videoFilename');
 const frameCount = document.getElementById('frameCount');
 const cameraFrameCountEl = document.getElementById('cameraFrameCount');
+const videoPredictionResult = document.getElementById('videoPredictionResult');
 const detectionLog = document.getElementById('detectionLog');
 const cameraDetectionLog = document.getElementById('cameraDetectionLog');
+const cameraPredictionResult = document.getElementById('cameraPredictionResult');
 const warningSound = document.getElementById('warningSound');
 const cameraPreview = document.getElementById('cameraPreview');
 const cameraCanvas = document.getElementById('cameraCanvas');
+const liveAlertBanner = document.getElementById('liveAlertBanner');
+const cameraStatePill = document.getElementById('cameraStatePill');
 
 function showMsg(type, text) {
   const errorMode = type === 'error';
@@ -203,114 +241,147 @@ function resetLog(targetEl, placeholder) {
   targetEl.innerHTML = '<div style="color:var(--t3);">' + placeholder + '</div>';
 }
 
-function logDetection(msg, targetEl) {
+function logDetection(message, targetEl) {
   const entry = document.createElement('div');
-  entry.textContent = '[' + new Date().toLocaleTimeString() + '] ' + msg;
+  entry.textContent = '[' + new Date().toLocaleTimeString() + '] ' + message;
   targetEl.prepend(entry);
 }
 
-function captureCameraBlob() {
-  return new Promise((resolve) => {
-    cameraCanvas.toBlob(resolve, 'image/jpeg', CAMERA_JPEG_QUALITY);
-  });
+function buildWebSocketUrl(path) {
+  const protocol = window.location.protocol === 'https:' ? 'wss:' : 'ws:';
+  return protocol + '//' + window.location.host + path;
 }
 
-async function processCameraFrameLoop() {
-  if (!cameraStream || cameraProcessingActive) return;
+function generateStreamId() {
+  if (window.crypto && typeof window.crypto.randomUUID === 'function') {
+    return window.crypto.randomUUID();
+  }
+  return 'stream-' + Date.now() + '-' + Math.random().toString(16).slice(2);
+}
 
-  cameraProcessingActive = true;
+function setCameraState(label, isAlert = false) {
+  cameraStatePill.textContent = isAlert ? 'Accident Detected' : label;
+  cameraStatePill.classList.toggle('alert', isAlert);
+}
+
+function showRealtimeAlert(message) {
+  liveAlertBanner.textContent = message;
+  liveAlertBanner.classList.add('show');
+  warningSound.currentTime = 0;
+  warningSound.play().catch(() => {});
+  if (alertBannerTimer) {
+    clearTimeout(alertBannerTimer);
+  }
+  alertBannerTimer = setTimeout(() => {
+    liveAlertBanner.classList.remove('show');
+  }, 4200);
+}
+
+async function logRealtimeAlert(payload) {
   try {
-    cameraCanvas.width = cameraPreview.videoWidth || 640;
-    cameraCanvas.height = cameraPreview.videoHeight || 480;
-    const ctx = cameraCanvas.getContext('2d', { alpha: false });
-    ctx.drawImage(cameraPreview, 0, 0, cameraCanvas.width, cameraCanvas.height);
-
-    const frameBlob = await captureCameraBlob();
-    if (!frameBlob) return;
-
-    const formData = new FormData();
-    formData.append('frame', frameBlob, 'camera.jpg');
-
-    const response = await fetch('{{ url_for("process_camera_frame") }}', {
+    await fetch('{{ url_for("log_alert") }}', {
       method: 'POST',
-      body: formData
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        label: payload.status,
+        confidence: payload.confidence
+      })
     });
-    const data = await response.json();
-    if (data.success) {
-      cameraFeed.src = data.image;
-      cameraFrameCount += 1;
-      cameraFrameCountEl.textContent = 'Frames: ' + cameraFrameCount;
-    }
   } catch (err) {
     console.error(err);
-  } finally {
-    cameraProcessingActive = false;
-    if (cameraStream) {
-      cameraProcessingInterval = setTimeout(processCameraFrameLoop, CAMERA_CAPTURE_INTERVAL_MS);
-    }
   }
 }
 
-async function pollAccidentStatus() {
+async function reportCameraInventory() {
+  if (!navigator.mediaDevices || !navigator.mediaDevices.enumerateDevices) return;
   try {
-    const res = await fetch('{{ url_for("accident_status") }}');
-    const data = await res.json();
-    if (data.accident && !soundCooldown) {
-      warningSound.currentTime = 0;
-      warningSound.play().catch(() => {});
-      soundCooldown = true;
-      setTimeout(() => { soundCooldown = false; }, 2500);
-      const logTarget = activeSource === 'camera' ? cameraDetectionLog : detectionLog;
-      logDetection('ACCIDENT DETECTED', logTarget);
-    }
+    const devices = await navigator.mediaDevices.enumerateDevices();
+    const cameraCount = devices.filter((device) => device.kind === 'videoinput').length;
+    await fetch('{{ url_for("report_camera_inventory") }}', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ count: cameraCount })
+    });
   } catch (err) {
     console.error(err);
   }
 }
 
-function ensurePolling() {
-  if (soundPollingInterval) return;
-  soundPollingInterval = setInterval(pollAccidentStatus, 1500);
-}
-
-function stopPollingIfIdle() {
-  if (activeSource || !soundPollingInterval) return;
-  clearInterval(soundPollingInterval);
-  soundPollingInterval = null;
+function captureVideoBlob() {
+  return new Promise((resolve) => {
+    videoCanvas.toBlob(resolve, 'image/jpeg', CAMERA_JPEG_QUALITY);
+  });
 }
 
 async function uploadVideo(file) {
   clearMsgs();
-  const formData = new FormData();
-  formData.append('video', file);
   progressWrap.classList.add('active');
   progressFill.style.width = '15%';
-  progressText.textContent = 'Uploading...';
+  progressText.textContent = 'Preparing video in browser...';
 
   try {
-    const response = await fetch('{{ url_for("upload_video") }}', {
-      method: 'POST',
-      body: formData
-    });
-    const data = await response.json();
-    if (!response.ok || !data.success) throw new Error(data.error || 'Upload failed.');
-
     progressFill.style.width = '100%';
-    progressText.textContent = 'Upload complete! Starting detection...';
+    progressText.textContent = 'Video ready. Processing frames in browser...';
     uploadZone.classList.add('hidden');
     videoPanel.classList.remove('hidden');
     videoFilename.textContent = file.name;
-    videoFeed.src = '{{ url_for("video_feed") }}?t=' + Date.now();
+    videoPreview.src = URL.createObjectURL(file);
+    await videoPreview.play();
     videoStatus.textContent = 'Live detection...';
     activeSource = 'video';
     videoFrameCount = 0;
     frameCount.textContent = 'Frames: 0';
+    videoPredictionResult.textContent = 'Prediction result will appear here after the uploaded video starts processing.';
     resetLog(detectionLog, 'Waiting for detection events...');
-    ensurePolling();
+    processUploadedVideoFrame();
     showMsg('success', 'Detection started - ' + file.name);
   } catch (error) {
     showMsg('error', error.message);
     progressWrap.classList.remove('active');
+  }
+}
+
+async function processUploadedVideoFrame() {
+  if (!videoPreview.src || videoPreview.paused || videoPreview.ended || videoProcessingActive) return;
+
+  videoProcessingActive = true;
+  try {
+    videoCanvas.width = videoPreview.videoWidth || 640;
+    videoCanvas.height = videoPreview.videoHeight || 480;
+    const ctx = videoCanvas.getContext('2d', { alpha: false });
+    ctx.drawImage(videoPreview, 0, 0, videoCanvas.width, videoCanvas.height);
+
+    const frameBlob = await captureVideoBlob();
+    if (!frameBlob) return;
+
+    const formData = new FormData();
+    formData.append('frame', frameBlob, 'video-frame.jpg');
+
+    const response = await fetch('/upload_frame', {
+      method: 'POST',
+      body: formData
+    });
+    const data = await response.json();
+    if (!response.ok || !data.success) throw new Error(data.error || 'Frame processing failed.');
+
+    videoFeed.src = data.image;
+    videoFrameCount += 1;
+    frameCount.textContent = 'Frames: ' + videoFrameCount;
+    videoPredictionResult.textContent = data.status + ' | Confidence: ' + data.confidence + '% | Inference: ' + data.detection_time_ms + ' ms';
+    if (data.alert) {
+      logDetection('Uploaded video alert triggered at ' + data.confidence + '% confidence.', detectionLog);
+      showRealtimeAlert('ACCIDENT DETECTED IN UPLOADED VIDEO');
+    }
+  } catch (error) {
+    console.error(error);
+    showMsg('error', error.message || 'Unable to process the uploaded video frame.');
+    await stopVideo(false);
+    return;
+  } finally {
+    videoProcessingActive = false;
+    if (activeSource === 'video' && videoPreview.src && !videoPreview.paused && !videoPreview.ended) {
+      videoProcessingTimer = setTimeout(processUploadedVideoFrame, VIDEO_CAPTURE_INTERVAL_MS);
+    }
   }
 }
 
@@ -337,10 +408,20 @@ uploadZone.addEventListener('drop', (event) => {
 
 async function stopVideo(showToast = true) {
   await fetch('{{ url_for("stop_video") }}', { method: 'POST' });
+  if (videoProcessingTimer) {
+    clearTimeout(videoProcessingTimer);
+    videoProcessingTimer = null;
+  }
+  videoProcessingActive = false;
+  videoPreview.pause();
+  if (videoPreview.src) {
+    URL.revokeObjectURL(videoPreview.src);
+  }
+  videoPreview.removeAttribute('src');
+  videoPreview.load();
   videoFeed.src = '';
   videoStatus.textContent = 'Stopped';
   activeSource = activeSource === 'video' ? null : activeSource;
-  stopPollingIfIdle();
   if (showToast) showMsg('success', 'Detection stopped.');
 }
 
@@ -352,8 +433,142 @@ async function resetVideo() {
   progressFill.style.width = '0%';
   videoInput.value = '';
   videoFilename.textContent = '';
+  videoPredictionResult.textContent = 'Prediction result will appear here after the uploaded video starts processing.';
   resetLog(detectionLog, 'Waiting for detection events...');
   frameCount.textContent = 'Frames: 0';
+}
+
+function closeCameraSocket() {
+  if (!cameraSocket) return;
+  try {
+    if (cameraSocket.readyState === WebSocket.OPEN) {
+      cameraSocket.send(JSON.stringify({ type: 'stop', stream_id: cameraStreamId }));
+    }
+    cameraSocket.close();
+  } catch (err) {
+    console.error(err);
+  }
+  cameraSocket = null;
+  cameraSocketReady = false;
+  cameraFrameInFlight = false;
+}
+
+function scheduleCameraStreamLoop() {
+  if (cameraAnimationFrameId) {
+    cancelAnimationFrame(cameraAnimationFrameId);
+  }
+  cameraAnimationFrameId = requestAnimationFrame(streamCameraFrame);
+}
+
+function streamCameraFrame(timestamp) {
+  if (!cameraStream || activeSource !== 'camera') return;
+
+  if (!cameraSocketReady || !cameraSocket || cameraSocket.readyState !== WebSocket.OPEN) {
+    scheduleCameraStreamLoop();
+    return;
+  }
+
+  if (cameraFrameInFlight || cameraSocket.bufferedAmount > 0 || timestamp - cameraLastSentAt < CAMERA_STREAM_INTERVAL_MS) {
+    scheduleCameraStreamLoop();
+    return;
+  }
+
+  if (!cameraPreview.videoWidth || !cameraPreview.videoHeight) {
+    scheduleCameraStreamLoop();
+    return;
+  }
+
+  cameraCanvas.width = CAMERA_STREAM_WIDTH;
+  cameraCanvas.height = CAMERA_STREAM_HEIGHT;
+  const ctx = cameraCanvas.getContext('2d', { alpha: false, desynchronized: true });
+  ctx.drawImage(cameraPreview, 0, 0, cameraCanvas.width, cameraCanvas.height);
+
+  cameraFrameInFlight = true;
+  cameraLastSentAt = timestamp;
+  cameraStatus.textContent = 'Analyzing...';
+  cameraPredictionResult.textContent = 'Analyzing live stream...';
+  cameraSocket.send(JSON.stringify({
+    type: 'frame',
+    stream_id: cameraStreamId,
+    image: cameraCanvas.toDataURL('image/jpeg', CAMERA_JPEG_QUALITY)
+  }));
+
+  scheduleCameraStreamLoop();
+}
+
+function handleCameraPrediction(payload) {
+  cameraFrameInFlight = false;
+  cameraFeed.src = payload.image;
+  cameraFrameCount += 1;
+  cameraFrameCountEl.textContent = 'Frames: ' + cameraFrameCount;
+  cameraPredictionResult.textContent = payload.status + ' | Confidence: ' + payload.confidence + '% | Inference: ' + payload.detection_time_ms + ' ms';
+  cameraStatus.textContent = 'Streaming live analysis';
+  setCameraState(payload.status === 'ACCIDENT' ? 'Accident Detected' : 'Normal', payload.status === 'ACCIDENT');
+
+  if (payload.status !== lastCameraState) {
+    logDetection('State changed to ' + payload.status + ' at ' + payload.confidence + '% confidence.', cameraDetectionLog);
+    lastCameraState = payload.status;
+  }
+
+  if (payload.alert) {
+    logDetection('Real-time alert triggered.', cameraDetectionLog);
+    showRealtimeAlert('ACCIDENT DETECTED - LIVE RESPONSE REQUIRED');
+    logRealtimeAlert(payload);
+  }
+}
+
+function connectCameraSocket() {
+  return new Promise((resolve, reject) => {
+    let handshakeComplete = false;
+    closeCameraSocket();
+    cameraStreamId = generateStreamId();
+    cameraSocket = new WebSocket(buildWebSocketUrl('/ws/realtime_detect'));
+
+    cameraSocket.addEventListener('open', () => {
+      cameraSocket.send(JSON.stringify({ type: 'start', stream_id: cameraStreamId }));
+    });
+
+    cameraSocket.addEventListener('message', (event) => {
+      try {
+        const payload = JSON.parse(event.data);
+        if (!payload.success) {
+          throw new Error(payload.error || 'Streaming failed.');
+        }
+
+        if (payload.type === 'ready') {
+          cameraSocketReady = true;
+          handshakeComplete = true;
+          resolve();
+          scheduleCameraStreamLoop();
+          return;
+        }
+
+        if (payload.type === 'prediction') {
+          handleCameraPrediction(payload);
+        }
+      } catch (error) {
+        cameraStatus.textContent = 'Camera error';
+        showMsg('error', error.message || 'Unable to process the live stream.');
+      }
+    });
+
+    cameraSocket.addEventListener('close', () => {
+      cameraSocketReady = false;
+      cameraFrameInFlight = false;
+      if (!handshakeComplete) {
+        reject(new Error('The real-time detection channel closed before streaming started.'));
+        return;
+      }
+      if (cameraStream && activeSource === 'camera') {
+        cameraStatus.textContent = 'Stream disconnected';
+      }
+    });
+
+    cameraSocket.addEventListener('error', () => {
+      cameraSocketReady = false;
+      reject(new Error('Unable to connect to the real-time detection channel.'));
+    });
+  });
 }
 
 async function startLiveDetection() {
@@ -364,33 +579,43 @@ async function startLiveDetection() {
   }
 
   try {
-    cameraStream = await navigator.mediaDevices.getUserMedia({ video: true, audio: false });
+    cameraStream = await navigator.mediaDevices.getUserMedia({
+      video: {
+        width: { ideal: 640 },
+        height: { ideal: 360 },
+        frameRate: { ideal: 12, max: 15 }
+      },
+      audio: false
+    });
+    activeSource = 'camera';
     cameraPreview.srcObject = cameraStream;
     await cameraPreview.play();
+    await connectCameraSocket();
+    await reportCameraInventory();
 
     cameraPanel.classList.remove('hidden');
-    cameraStatus.textContent = 'Live detection...';
-    activeSource = 'camera';
+    cameraStatus.textContent = 'Streaming live analysis';
     cameraFrameCount = 0;
     cameraFrameCountEl.textContent = 'Frames: 0';
+    cameraPredictionResult.textContent = 'Analyzing live stream...';
     resetLog(cameraDetectionLog, 'Waiting for live camera events...');
-    ensurePolling();
+    setCameraState('Normal');
+    lastCameraState = 'NORMAL';
 
-    processCameraFrameLoop();
-
-    showMsg('success', 'Device camera opened for live detection.');
+    showMsg('success', 'Real-time live camera analysis started.');
   } catch (error) {
+    await stopLiveDetection(false);
     showMsg('error', error.message || 'Unable to access the camera.');
   }
 }
 
 async function stopLiveDetection(showToast = true) {
   await fetch('{{ url_for("stop_camera") }}', { method: 'POST' });
-  if (cameraProcessingInterval) {
-    clearTimeout(cameraProcessingInterval);
-    cameraProcessingInterval = null;
+  if (cameraAnimationFrameId) {
+    cancelAnimationFrame(cameraAnimationFrameId);
+    cameraAnimationFrameId = null;
   }
-  cameraProcessingActive = false;
+  closeCameraSocket();
   if (cameraStream) {
     cameraStream.getTracks().forEach((track) => track.stop());
     cameraStream = null;
@@ -398,8 +623,10 @@ async function stopLiveDetection(showToast = true) {
   cameraPreview.srcObject = null;
   cameraFeed.src = '';
   cameraStatus.textContent = 'Camera idle';
+  cameraPredictionResult.textContent = 'Prediction result will update automatically while live video analysis is running.';
   activeSource = activeSource === 'camera' ? null : activeSource;
-  stopPollingIfIdle();
+  liveAlertBanner.classList.remove('show');
+  setCameraState('Normal');
   if (showToast) showMsg('success', 'Live camera detection stopped.');
 }
 
@@ -408,14 +635,24 @@ async function resetLiveDetection() {
   cameraPanel.classList.add('hidden');
   resetLog(cameraDetectionLog, 'Waiting for live camera events...');
   cameraFrameCountEl.textContent = 'Frames: 0';
+  lastCameraState = 'NORMAL';
 }
 
-setInterval(() => {
+videoPreview.addEventListener('play', () => {
   if (activeSource === 'video') {
-    videoFrameCount += 1;
-    frameCount.textContent = 'Frames: ' + videoFrameCount;
+    processUploadedVideoFrame();
   }
-}, 1000);
+});
+
+videoPreview.addEventListener('ended', () => {
+  videoStatus.textContent = 'Completed';
+});
+
+window.addEventListener('beforeunload', () => {
+  closeCameraSocket();
+});
+
+reportCameraInventory();
 </script>
 </body>
 </html>

@@ -139,10 +139,26 @@
 </div>
 
 <script>
+  async function reportCameraInventory() {
+    if (!navigator.mediaDevices || !navigator.mediaDevices.enumerateDevices) return;
+    try {
+      const devices = await navigator.mediaDevices.enumerateDevices();
+      const cameraCount = devices.filter((device) => device.kind === 'videoinput').length;
+      await fetch('{{ url_for("report_camera_inventory") }}', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ count: cameraCount })
+      });
+    } catch (err) {
+      console.error(err);
+    }
+  }
+
   function tick() {
     const el = document.getElementById('topbarTime');
     if (el) el.textContent = new Date().toLocaleTimeString('en-US', { hour: '2-digit', minute: '2-digit', second: '2-digit' });
   }
+  reportCameraInventory();
   tick();
   setInterval(tick, 1000);
 </script>
