@@ -1,14 +1,13 @@
-<!-- Standards mode keeps the public introduction page rendering consistently across browsers. -->
+
 <!DOCTYPE html>
 <html lang="en">
-<!-- Metadata and shared assets support the product-introduction experience before authentication. -->
+
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>AcciVision - AI Accident Detection</title>
     <link rel="stylesheet" href="{{ url_for('static', filename='css/style.css') }}">
 </head>
-<!-- The intro page explains product value before operators move into protected workflows. -->
 <body>
 
     <nav class="navbar">
@@ -37,7 +36,7 @@
             </h1>
             <p>
                 Leveraging YOLOv8 deep learning to instantly detect car accidents
-                in video feeds - enabling faster emergency response and saving lives.
+                in Live Streams or video feeds - enabling faster emergency response and saving lives.
             </p>
             <div class="hero-actions">
                 <a href="{{ url_for('login') }}" class="btn btn-primary">
@@ -61,7 +60,7 @@
                 <div class="desc">Frame Processing</div>
             </div>
             <div class="stat">
-                <div class="number">Video</div>
+                <div class="number">Live&Video</div>
                 <div class="desc">Upload & Detect</div>
             </div>
             <div class="stat">
@@ -93,10 +92,10 @@
             </div>
             <div class="feature-card fade-in fade-in-delay-2">
                 <div class="feature-icon amber">UP</div>
-                <h3>Video Upload Analysis</h3>
+                <h3>Live&Video Analysis</h3>
                 <p>
-                    Upload dashcam footage, surveillance videos, or any recorded
-                    video file. The system processes each frame and highlights
+                    Upload dashcam footage, surveillance videos,any recorded
+                    video file, or Live Streams. The system processes each frame and highlights
                     detected accidents with bounding boxes.
                 </p>
             </div>
@@ -153,7 +152,7 @@
             <div class="step fade-in">
                 <div class="step-number">01</div>
                 <h3>Input Source</h3>
-                <p>Upload a video file (dashcam, surveillance, or any recorded footage).</p>
+                <p>Upload a video file (dashcam, surveillance, any recorded footage, or stream live video.)</p>
             </div>
             <div class="step fade-in fade-in-delay-1">
                 <div class="step-number">02</div>
