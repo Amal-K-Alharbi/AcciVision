@@ -479,3 +479,11 @@ Passwords are created with Werkzeug password hashing. The verifier also supports
 `Flask` · `YOLOv8` · `OpenCV` · `SQLite` · `Admin Dashboard` · `Responder Workflow`
 
 </div>
+
+## Team Members
+
+- [Amal Alharbi](https://github.com/Amal-K-Alharbi)
+- [Hams Algusuni](https://github.com/Hamse1Ai)
+- [Sarah Faisal](https://github.com/Fai-Aqlah)
+- [Fai Aqlah](https://github.com/isarahfaisal)
+- [Mariyyah Fahad](https://github.com/Mariyyah1F)
