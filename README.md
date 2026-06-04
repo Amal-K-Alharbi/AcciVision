@@ -483,7 +483,7 @@ Passwords are created with Werkzeug password hashing. The verifier also supports
 ## Team Members
 
 - [Amal Alharbi](https://github.com/Amal-K-Alharbi)
-- [Hams Algusuni](https://github.com/Hamse1Ai)
-- [Sarah Faisal](https://github.com/Fai-Aqlah)
-- [Fai Aqlah](https://github.com/isarahfaisal)
+- [Hams Algusuni](https://github.com/Hams1Ai)
+- [Sarah Faisal](https://github.com/isarahfaisal)
+- [Fai Aqlah](https://github.com/Fai-Aqlah)
 - [Mariyyah Fahad](https://github.com/Mariyyah1F)
