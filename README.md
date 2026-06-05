@@ -460,7 +460,7 @@ Passwords are created with Werkzeug password hashing. The verifier also supports
 
 ---
 
-## ✅ Implementation Notes
+## ✅Implementation Notes
 
 - The YOLO model is loaded once globally: `YOLO(os.path.join(BASE_DIR, "best.pt"))`.
 - `coco.txt` supplies the class label lookup; `app.py` treats only the `accident` label as alert-triggering.
