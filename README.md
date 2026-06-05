@@ -488,3 +488,4 @@ Passwords are created with Werkzeug password hashing. The verifier also supports
 - [Sarah Faisal](https://github.com/isarahfaisal)
 - [Fai Aqlah](https://github.com/Fai-Aqlah)
 - [Mariyyah Fahad](https://github.com/Mariyyah1F)
+  
