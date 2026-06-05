@@ -25,6 +25,7 @@ AcciVision is a Flask-based accident monitoring system that runs a custom YOLO m
 
 ---
 
+
 ## ✨ What This Project Does
 
 | Area | Current Implementation |
